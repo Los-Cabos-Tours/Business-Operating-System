@@ -73,7 +73,7 @@ const DEFAULT_STAGES_SLF = [
   { id: 'under_review', name: 'Under Review', isClosed: false },
   { id: 'approved', name: 'Approved', isClosed: true },
   { id: 'denied_appeal', name: 'Denied / Appeal Review', isClosed: true },
-  { id: 'closed', name: 'Closed', isClosed: false }
+  { id: 'closed', name: 'Closed', isClosed: true }
 ];
 
 // Settings store — deep-merge over defaults so upgrades add keys automatically
