@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BOS Tools — Backup &amp; Restore</title>
+<style>
+body { font-family: Inter, sans-serif; background: #0A1628; color: #F0EAD6; margin: 0; padding: 40px 20px; }
+.wrap { max-width: 720px; margin: 0 auto; }
+h1 { font-family: Cinzel, serif; color: #C9A84C; font-size: 22px; letter-spacing: 2px; }
+.sub { color: rgba(240,234,214,0.6); font-size: 13px; margin: 4px 0 28px; }
+.card { background: rgba(15,32,64,0.45); border: 1px solid rgba(201,168,76,0.2); border-radius: 14px; padding: 24px; margin-bottom: 20px; }
+.card h2 { font-size: 15px; color: #C9A84C; margin: 0 0 8px; }
+.card p { font-size: 12.5px; color: rgba(240,234,214,0.65); line-height: 1.6; margin: 0 0 16px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 10px; border: 1px solid rgba(201,168,76,0.45); background: rgba(201,168,76,0.15); color: #C9A84C; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; }
+.btn:hover { background: rgba(201,168,76,0.25); }
+.btn.warn { border-color: rgba(212,88,26,0.45); background: rgba(212,88,26,0.12); color: #FF8A5C; }
+input[type="file"] { color: rgba(240,234,214,0.8); font-size: 13px; margin-right: 10px; }
+#status { font-size: 12.5px; margin-top: 14px; color: #6BCB77; min-height: 18px; }
+.note { font-size: 11px; color: rgba(240,234,214,0.45); margin-top: 10px; }
+a.back { color: #C9A84C; font-size: 12px; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>BOS Tools</h1>
+  <p class="sub">Backup &amp; Restore — works with the main CRM on this same site.</p>
+
+  <div class="card">
+    <h2>Download Full Backup</h2>
+    <p>Exports every record of the system (guests, bookings, tasks, operators, settings, history) into one JSON file you can keep safely offline.</p>
+    <button class="btn" id="btn-backup">Download Full Backup (.json)</button>
+  </div>
+
+  <div class="card">
+    <h2>Restore From Backup</h2>
+    <p>Import a backup file made by this tool. It is checked for validity first, and a safety snapshot of your current data is taken before anything is overwritten.</p>
+    <input type="file" id="import-file" accept=".json,application/json" />
+    <button class="btn warn" id="btn-import">Restore Backup</button>
+    <div id="status"></div>
+    <p class="note">Restoring replaces current records with the backup contents. Download a fresh backup first if unsure.</p>
+  </div>
+
+  <p><a class="back" href="./">&larr; Back to main app</a></p>
+</div>
+
+<script src="js/storage.js"></script>
+<script src="js/bos-backup.js"></script>
+<script>
+(function () {
+  var btnB = document.getElementById('btn-backup');
+  var btnI = document.getElementById('btn-import');
+  var fileEl = document.getElementById('import-file');
+  var statusEl = document.getElementById('status');
+
+  function setStatus(msg) { if (statusEl) statusEl.textContent = msg; }
+
+  btnB.addEventListener('click', function () {
+    if (!window.BOSBackup) { setStatus('Backup module failed to load.'); return; }
+    try {
+      window.BOSBackup.download();
+      setStatus('Backup file downloaded.');
+    } catch (e) {
+      setStatus('Backup failed: ' + (e && e.message ? e.message : 'unknown error'));
+    }
+  });
+
+  btnI.addEventListener('click', function () {
+    if (!window.BOSBackup) { setStatus('Backup module failed to load.'); return; }
+    setStatus('Reading file...');
+    window.BOSBackup.importFile(fileEl, { textContent: '' });
+  });
+
+  var realImport = window.BOSBackup.importFile;
+  window.BOSBackup.importFile = function (input, ignore) {
+    var file = input.files && input.files[0];
+    if (!file) { setStatus('Choose a backup file first.'); return; }
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      var parsed = null;
+      try { parsed = JSON.parse(ev.target.result); }
+      catch (e) { setStatus('Invalid JSON file — cannot import.'); return; }
+      var check = window.BOSBackup.validate(parsed);
+      if (!check.ok) { setStatus('Import rejected: ' + check.reason); return; }
+      var snapOk = window.BOSStorage.snapshotBefore('pre-import');
+      if (!snapOk) { setStatus('Import blocked: safety snapshot failed (storage full?). Download a manual backup first.'); return; }
+      window.BOSStorage.restoreAllRaw(check.bundle.data);
+      setStatus('Import complete. Reloading...');
+      setTimeout(function () { location.reload(); }, 1200);
+    };
+    reader.onerror = function () { setStatus('Could not read the selected file.'); };
+    reader.readAsText(file);
+  };
+})();
+</script>
+</body>
+</html>
