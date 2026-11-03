@@ -2,28 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>BOS — Business Operating System</title>
+  <title>Aetherion — BOS</title>
   <style>
     html, body { margin: 0; padding: 0; height: 100%; background: #070F1C; overflow: hidden; }
     #bos-frame { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }
   </style>
 </head>
 <body>
-  <iframe id="bos-frame" src="crm.html" title="BOS"></iframe>
+  <iframe id="bos-frame" src="crm.html" title="Aetherion"></iframe>
   <script>
     (function () {
       var frame = document.getElementById('bos-frame');
 
-      // BOS branding patch — applied to the login overlay at runtime.
-      // Los Cabos Tours is now one of the companies managed by BOS,
-      // not the name of the platform.
+      // Branding patch — ONLY "Los Cabos Tours" becomes "BOS".
+      // Aetherion remains the platform brand name.
       function patchDoc(doc) {
         try {
-          if (doc.title.indexOf('Los Cabos Tours') !== -1 || doc.title === 'Aetherion') {
-            doc.title = 'BOS — Business Operating System';
+          if (doc.title.indexOf('Los Cabos Tours') !== -1) {
+            doc.title = 'Aetherion — BOS';
           }
-          var t = doc.querySelector('.login-title');
-          if (t && t.textContent.trim() === 'Aetherion') t.textContent = 'BOS';
           var s = doc.querySelector('.login-subtitle');
           if (s && s.textContent.indexOf('Los Cabos Tours') !== -1) s.textContent = 'BOS';
           var f = doc.querySelector('.login-footer');
@@ -38,7 +35,6 @@
         try { doc = frame.contentDocument; } catch (e) { return; }
         if (!doc || !doc.documentElement) return;
         patchDoc(doc);
-        // Re-apply only if the login overlay is ever re-rendered.
         var overlay = doc.getElementById('login-overlay');
         if (overlay && window.MutationObserver) {
           new MutationObserver(function () { patchDoc(doc); })
