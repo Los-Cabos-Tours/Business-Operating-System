@@ -2,17 +2,19 @@
 // Branding patch — applied to crm.html by GitHub Actions.
 // Every replacement must match EXACTLY the expected number of
 // times, or the script fails and writes nothing. No fuzzy edits.
+//
+// RULE: Aetherion remains the platform brand. ONLY
+// "Los Cabos Tours" strings become "BOS" (it is one of the
+// companies the platform manages).
 // ============================================================
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const FILE = 'crm.html';
 
-// Login page rebrand: "Los Cabos Tours — Operations Platform" is now "BOS"
-// (Los Cabos Tours is one of the companies managed by the BOS platform.)
 const REPLACEMENTS = [
   {
     from: '<title>Aetherion — Los Cabos Tours Operations Platform</title>',
-    to: '<title>BOS — Business Operating System</title>',
+    to: '<title>Aetherion — BOS</title>',
     expect: 1
   },
   {
