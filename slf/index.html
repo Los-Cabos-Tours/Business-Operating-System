@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SLF CRM — Student Loan Forgiveness</title>
+<style>
+:root { --navy:#0A1628; --panel:rgba(15,32,64,0.45); --gold:#C9A84C; --text:#F0EAD6; --muted:rgba(240,234,214,0.6); --line:rgba(201,168,76,0.2); --green:#6BCB77; --red:#D4581A; }
+* { box-sizing:border-box; }
+body { margin:0; font-family:Inter,sans-serif; background:var(--navy); color:var(--text); display:flex; min-height:100vh; }
+aside { width:220px; background:rgba(10,22,40,0.85); border-right:1px solid var(--line); padding:24px 0; flex-shrink:0; }
+aside h1 { font-family:Cinzel,serif; color:var(--gold); font-size:15px; letter-spacing:2px; margin:0 0 4px; padding:0 20px 16px; border-bottom:1px solid var(--line); }
+aside .tag { font-size:10px; color:var(--muted); padding:10px 20px 14px; letter-spacing:1px; text-transform:uppercase; }
+nav button { display:block; width:100%; text-align:left; background:none; border:none; color:var(--muted); padding:11px 20px; font-size:13px; cursor:pointer; border-left:3px solid transparent; }
+nav button:hover { color:var(--text); background:rgba(201,168,76,0.06); }
+nav button.active { color:var(--gold); border-left-color:var(--gold); background:rgba(201,168,76,0.1); }
+main { flex:1; padding:28px 32px; overflow-x:auto; }
+h2.view-title { font-family:Cinzel,serif; color:var(--gold); font-size:19px; letter-spacing:1px; margin:0 0 20px; }
+.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:24px; }
+.kpi { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
+.kpi .num { font-size:24px; color:var(--gold); font-weight:600; }
+.kpi .lbl { font-size:11px; color:var(--muted); margin-top:4px; letter-spacing:0.5px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:18px; }
+.card h3 { font-size:13px; color:var(--gold); margin:0 0 12px; letter-spacing:0.5px; }
+table { width:100%; border-collapse:collapse; font-size:12.5px; }
+th { text-align:left; color:var(--muted); font-weight:500; font-size:11px; padding:8px 10px; border-bottom:1px solid var(--line); letter-spacing:0.5px; }
+td { padding:10px; border-bottom:1px solid rgba(255,255,255,0.04); }
+tr:hover td { background:rgba(201,168,76,0.04); }
+input, select, textarea { background:rgba(10,22,40,0.6); border:1px solid var(--line); border-radius:8px; color:var(--text); padding:9px 12px; font-size:13px; font-family:inherit; width:100%; }
+input:focus, select:focus, textarea:focus { outline:1px solid var(--gold); }
+.btn { display:inline-flex; align-items:center; gap:6px; padding:9px 16px; border-radius:9px; border:1px solid rgba(201,168,76,0.45); background:rgba(201,168,76,0.15); color:var(--gold); font-size:12.5px; font-weight:600; cursor:pointer; }
+.btn:hover { background:rgba(201,168,76,0.28); }
+.btn.ghost { border-color:rgba(240,234,214,0.2); color:var(--muted); background:transparent; }
+.btn.danger { border-color:rgba(212,88,26,0.5); color:#FF8A5C; background:rgba(212,88,26,0.1); }
+.btn.small { padding:5px 10px; font-size:11px; }
+.stage-chip { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; border:1px solid var(--line); color:var(--gold); white-space:nowrap; }
+.stage-chip.closed { border-color:rgba(107,203,119,0.4); color:var(--green); }
+.stage-chip.denied { border-color:rgba(212,88,26,0.5); color:#FF8A5C; }
+.bar-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:12px; }
+.bar-row .bar { flex:1; height:14px; background:rgba(255,255,255,0.05); border-radius:7px; overflow:hidden; }
+.bar-row .bar i { display:block; height:100%; background:linear-gradient(90deg, rgba(201,168,76,0.5), var(--gold)); }
+.bar-row .cnt { width:26px; text-align:right; color:var(--muted); }
+.modal-bg { position:fixed; inset:0; background:rgba(4,10,20,0.75); display:none; align-items:flex-start; justify-content:center; z-index:50; padding:40px 16px; overflow:auto; }
+.modal-bg.open { display:flex; }
+.modal { background:#0E1F3C; border:1px solid var(--line); border-radius:14px; padding:24px; width:100%; max-width:560px; }
+.modal h3 { margin:0 0 16px; color:var(--gold); font-size:15px; font-family:Cinzel,serif; letter-spacing:1px; }
+.fgrid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.fgrid .full { grid-column:1 / -1; }
+label.fl { display:block; font-size:10.5px; color:var(--muted); margin:0 0 5px; letter-spacing:0.5px; }
+.modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+.doc-item { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.04); font-size:12.5px; }
+.doc-item input[type=checkbox] { width:16px; height:16px; accent-color:var(--gold); }
+.doc-item .dname { flex:1; }
+.doc-item .ddate { color:var(--muted); font-size:11px; }
+.empty { color:var(--muted); font-size:12.5px; padding:22px; text-align:center; }
+.status-pending { color:var(--gold); } .status-approved { color:var(--green); } .status-denied { color:#FF8A5C; } .status-appeal { color:#FF8A5C; }
+.hist { font-size:12px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
+.hist .h-ts { color:var(--muted); font-size:10.5px; }
+.toolbar { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+.toolbar input { max-width:280px; }
+select.compact, input.compact { width:auto; }
+.notice { font-size:11px; color:var(--muted); margin-top:8px; }
+a.back { color:var(--muted); font-size:11.5px; text-decoration:none; display:block; margin-bottom:16px; }
+a.back:hover { color:var(--gold); }
+</style>
+</head>
+<body>
+<aside>
+  <h1>SLF CRM</h1>
+  <div class="tag">Student Loan Forgiveness</div>
+  <nav id="nav">
+    <button data-view="dashboard" class="active">Dashboard</button>
+    <button data-view="clients">Clients</button>
+    <button data-view="cases">Cases &amp; Pipeline</button>
+    <button data-view="history">Activity History</button>
+    <button data-view="backup">Backup &amp; Restore</button>
+  </nav>
+</aside>
+<main>
+  <a class="back" href="../crm.html">&larr; BOS Main</a>
+  <h2 class="view-title" id="view-title">Dashboard</h2>
+  <div id="view"></div>
+</main>
+
+<!-- Client modal -->
+<div class="modal-bg" id="client-modal">
+  <div class="modal">
+    <h3 id="client-modal-title">Add Client</h3>
+    <div class="fgrid">
+      <div class="full"><label class="fl">Full Name *</label><input id="c-name" placeholder="Jane Doe" /></div>
+      <div><label class="fl">Email</label><input id="c-email" type="email" placeholder="jane@email.com" /></div>
+      <div><label class="fl">Phone</label><input id="c-phone" placeholder="+1 555 000 1234" /></div>
+      <div class="full"><label class="fl">Notes</label><textarea id="c-notes" rows="3" placeholder="Context, referral source, best contact time..."></textarea></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="SLF.closeModal('client-modal')">Cancel</button>
+      <button class="btn" onclick="SLF.saveClient()">Save Client</button>
+    </div>
+  </div>
+</div>
+
+<!-- Case modal -->
+<div class="modal-bg" id="case-modal">
+  <div class="modal">
+    <h3 id="case-modal-title">New Case</h3>
+    <div class="fgrid">
+      <div class="full"><label class="fl">Client *</label><select id="k-client"></select></div>
+      <div><label class="fl">Program *</label><select id="k-program">
+        <option>PSLF</option><option>IDR Forgiveness</option><option>Teacher Loan Forgiveness</option>
+        <option>Borrower Defense</option><option>TPD (Total &amp; Permanent Disability)</option><option>Closed School Discharge</option>
+      </select></div>
+      <div><label class="fl">Servicer</label><select id="k-servicer">
+        <option>MOHELA</option><option>Aidvantage</option><option>Edfinancial</option><option>Nelnet</option>
+        <option>Great Lakes</option><option>Other / Unknown</option>
+      </select></div>
+      <div><label class="fl">Loan Balance (USD)</label><input id="k-balance" type="number" min="0" step="0.01" placeholder="0.00" /></div>
+      <div><label class="fl">Initial Stage</label><select id="k-stage"></select></div>
+      <div class="full"><label class="fl">Case Notes</label><textarea id="k-notes" rows="3"></textarea></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="SLF.closeModal('case-modal')">Cancel</button>
+      <button class="btn" onclick="SLF.saveCase()">Save Case</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/settings.js"></script>
+<script src="slf-app.js"></script>
+</body>
+</html>
