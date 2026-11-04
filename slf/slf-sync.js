@@ -5,82 +5,75 @@
 // SEPARATE namespace (slf-<namespace>) so SLF and main BOS data
 // can never mix.
 //
-// Design decisions (documented for review):
+// Design decisions (documented for independent review):
 //  - OFF by default. No customer data is transmitted until the
 //    operator opts in from the SLF UI. Reason: the main BOS sync
 //    endpoint identifies datasets by a URL query parameter
 //    (user=<ns>), which is NOT access control. Opt-in is the
 //    smallest safe behavior for sensitive loan data.
 //  - Local-first: sync failures never block or lose local writes.
-//  - Merge: last-write-wins by record.updatedAt (same conflict
-//    model as main BOS CloudSync, deliberately matched so both
-//    apps behave identically). Deleted-record IDs are stored in
-//    tombstones and never resurrected.
-//  - Remote payloads are validated before merge: unknown shape,
-//    empty object, or non-array for array keys => pull discarded,
-//    local data untouched.
+//  - Merge: last-write-wins by record updatedAt (same conflict
+//    model as main BOS CloudSync). Deleted record IDs are kept in
+//    tombstones and are never resurrected.
+//  - Remote payloads are validated before merge: wrong shape or
+//    non-array values for array keys => pull discarded, local
+//    data untouched.
 //  - Never logs record contents — only counts and IDs.
 // ============================================================
 var SLFSync = (function () {
+  'use strict';
+
   var KEYS = ['slf_crm.clients.v1', 'slf_crm.cases.v1', 'slf_crm.history.v1', 'slf_crm.counter.v1'];
   var MERGE_KEYS = { 'slf_crm.clients.v1': 'clients', 'slf_crm.cases.v1': 'cases' };
   var TOMB_KEY = 'slf_crm.tombstones.v1';
-  var TOMB_TYPES = ['clients', 'cases'];
+  var ENABLE_KEY = 'slf_crm.sync.enabled';
+  var POLL_MS = 60000;
+  var DEBOUNCE_MS = 2000;
 
-  var _pollTimer = null;
+  var _origSet = localStorage.setItem.bind(localStorage);
+  var _origGet = localStorage.getItem.bind(localStorage);
   var _writing = false;
+  var _pollTimer = null;
+  var _debounceTimer = null;
+  var _pushInFlight = false;
 
-  // ---- configuration (mirrors main BOS keys, slf-prefixed) ----
-  function getUrl() { return (localStorage.getItem('aetherion_sync_url') || '').trim(); }
+  // ---- configuration (mirrors main BOS keys, slf-prefixed ns) ----
+  function getUrl() { return (_origGet('aetherion_sync_url') || '').trim(); }
   function getNamespace() {
-    var ns = (localStorage.getItem('aetherion_sync_namespace') || 'default').trim();
-    return 'slf-' + (ns || 'default');
+    var ns = (_origGet('aetherion_sync_namespace') || 'default').trim() || 'default';
+    return 'slf-' + ns;
   }
-  function isEnabled() { return localStorage.getItem('slf_crm.sync.enabled') === 'true'; }
+  function isEnabled() { return _origGet(ENABLE_KEY) === 'true'; }
+  function isFirebase(u) { return u.indexOf('firebaseio.com') !== -1; }
 
   // ---- status chip ----
-  var chipId = 'slf-sync-chip';
   function setChip(state, label) {
-    var c = document.getElementById(chipId);
+    var c = document.getElementById('slf-sync-chip');
     if (!c) return;
-    var ok = state === 'synced' || state === 'syncing';
-    var cls = 'slf-sync-chip ' + (state === 'synced' ? 'ok' : state === 'syncing' ? 'busy' : state === 'error' ? 'err' : '');
-    c.className = cls;
-    c.innerHTML = ok
-      ? (state === 'syncing'
-          ? 'Syncing…'
-          : 'Synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
-      : (label || 'Local Only');
+    var txt;
+    if (state === 'syncing') { c.className = 'slf-sync-chip busy'; txt = 'Syncing...'; }
+    else if (state === 'synced') {
+      c.className = 'slf-sync-chip ok';
+      txt = 'Synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    else if (state === 'error') { c.className = 'slf-sync-chip err'; txt = label || 'Sync Error'; }
+    else { c.className = 'slf-sync-chip off'; txt = label || 'Local Only'; }
+    c.textContent = txt;
   }
 
-  // ---- helpers ----
+  // ---- tombstones ----
   function getTombs() {
-    try { return JSON.parse(localStorage.getItem(TOMB_KEY) || '{}'); } catch (e) { return {}; }
+    try { return JSON.parse(_origGet(TOMB_KEY) || '{}'); } catch (e) { return {}; }
   }
-  function setTombs(t) { localStorage.setItem(TOMB_KEY, JSON.stringify(t)); }
+  function setTombs(t) { _origSet(TOMB_KEY, JSON.stringify(t)); }
 
-  function mergeArr(localArr, remoteArr, tombSet) {
-    var map = {};
-    localArr.forEach(function (item) { if (item && item.id && !tombSet[item.id]) map[item.id] = item; });
-    remoteArr.forEach(function (item) {
-      if (!item || !item.id || tombSet[item.id]) return;
-      var local = map[item.id];
-      if (!local || (item.updatedAt || 0) > (local.updatedAt || 0)) map[item.id] = model(item);
-    });
-    return Object.keys(map).map(function (id) { return map[id]; });
-  }
-
-  // Normalize a remote record against the local model so stale or
-  // partially-shaped remote records cannot corrupt the local model.
-  function model(remoteItem) {
-    return remoteItem; // shape preserved; validation happens at merge time
-  }
-
+  // Record IDs removed from a saved array so other devices'
+  // pushes cannot resurrect intentionally deleted records.
   function trackDeletions(key, newValue) {
     try {
       var type = MERGE_KEYS[key];
       if (!type) return;
-      var oldRaw = localStorage.getItem(key);
+      var oldRaw = _origGet(key);
       if (!oldRaw) return;
       var oldArr = JSON.parse(oldRaw);
       var newArr = JSON.parse(newValue || '[]');
@@ -90,196 +83,264 @@ var SLFSync = (function () {
       var removed = oldArr.filter(function (item) { return item && item.id && !newIds[item.id]; });
       if (!removed.length) return;
       var tombs = getTombs();
-      if (!tombs[type]) tombs[type] = [];
+      if (!Array.isArray(tombs[type])) tombs[type] = [];
       removed.forEach(function (item) {
-        if (tombs[type].mergeArr !== undefined) return; // defensive
         if (tombs[type].indexOf(item.id) === -1) tombs[type].push(item.id);
       });
       setTombs(tombs);
-    } catch (e) { /* never throw from deletion tracking */ }
+    } catch (e) { /* deletion tracking must never throw */ }
   }
 
-  // ---- hook localStorage writes (same technique as main BOS) ----
-  var _origSet = localStorage.setItem.bind(localStorage);
-  var _origGet = localStorage.getItem.bind(localStorage);
+  // Merge two id-keyed arrays, last-write-wins by updatedAt,
+  // excluding tombstoned ids on both sides.
+  function mergeArr(localArr, remoteArr, tombList) {
+    var tombSet = {};
+    (tombList || []).forEach(function (id) { tombSet[id] = true; });
+    var map = {};
+    localArr.forEach(function (item) {
+      if (item && item.id && !tombSet[item.id]) map[item.id] = item;
+    });
+    remoteArr.forEach(function (item) {
+      if (!item || !item.id || tombSet[item.id]) return;
+      var local = map[item.id];
+      if (!local || (Number(item.updatedAt) || 0) > (Number(local.updatedAt) || 0)) {
+        map[item.id] = item;
+      }
+    });
+    return Object.keys(map).map(function (id) { return map[id]; });
+  }
+
+  // History: union by ts+action signature, newest first, cap 500.
+  function mergeHistory(localStr, remoteStr) {
+    var local = [], remote = [];
+    try { local = JSON.parse(localStr || '[]'); } catch (e) {}
+    try { remote = JSON.parse(remoteStr || '[]'); } catch (e) {}
+    if (!Array.isArray(local)) local = [];
+    if (!Array.isArray(remote)) remote = [];
+    var map = {};
+    local.forEach(function (e) { if (e && e.ts) map[e.ts + '|' + (e.action || '')] = e; });
+    remote.forEach(function (e) { if (e && e.ts && !map[e.ts + '|' + (e.action || '')]) map[e.ts + '|' + (e.action || '')] = e; });
+    var merged = Object.keys(map).map(function (k) { return map[k]; });
+    merged.sort(function (a, b) { return new Date(b.ts || 0) - new Date(a.ts || 0); });
+    if (merged.length > 500) merged = merged.slice(0, 500);
+    return merged;
+  }
+
+  // Counters: max per kind so id sequences never collide across devices.
+  function mergeCounter(localStr, remoteStr) {
+    var local = {}, remote = {};
+    try { local = JSON.parse(localStr || '{}'); } catch (e) { local = {}; }
+    try { remote = JSON.parse(remoteStr || '{}'); } catch (e) { remote = {}; }
+    var out = {};
+    ['client', 'case'].forEach(function (k) {
+      out[k] = Math.max(Number(local[k]) || 0, Number(remote[k]) || 0);
+    });
+    return out;
+  }
+
+  // Merge tombstones: union of deleted ids from all devices.
+  function mergeTombs(localStr, remoteStr) {
+    var local = getTombs(), remote = {};
+    try { remote = JSON.parse(remoteStr || '{}'); } catch (e) { remote = {}; }
+    var result = {};
+    ['clients', 'cases'].forEach(function (type) {
+      var combined = {};
+      (local[type] || []).forEach(function (id) { combined[id] = true; });
+      (remote[type] || []).forEach(function (id) { combined[id] = true; });
+      result[type] = Object.keys(combined);
+    });
+    return result;
+  }
+
+  // ---- hook local writes (same technique as main BOS CloudSync) ----
   localStorage.setItem = function (key, value) {
     _origSet(key, value);
     if (_writing) return;
-    if (KEYS.indexOf(key) === -1 && key !== TOMB_KEY) return;
+    if (KEYS.indexOf(key) === -1) return;
     if (!isEnabled()) return;
     trackDeletions(key, value);
     schedulePush();
   };
-  localStorage.getItem = function (monkey-patched) { return _origGet(key); };
-  localStorage.getItem = function (key) { return _origGet(key); };
 
   // ---- push ----
   function pushNow() {
     if (!isEnabled()) return;
-    var url = getUrl();
-    if (!url) { setChip('off'); return; }
+    var rawUrl = getUrl();
+    if (!rawUrl) { setChip('off', 'Local Only (no sync URL)'); return; }
+    if (_pushInFlight) return; // no duplicate in-flight pushes
+    _pushInFlight = true;
     setChip('syncing');
     var ts = Date.now().toString();
     var payload = { slf_last_updated: ts };
-    KEYS.forEach(function (k) { var v = _origGet(k); if (v != null) payload[k] = JSON.parse(v); });
-    try { _origSet('slf_crm.sync.last_push', ts); } catch (e) {}
-
-    if (url.indexOf('firebaseio.com') !== -1) {
-      fetch(url.replace(/\/$/, '') + '/crm_slf-' + getNamespace().replace(/^slf-/, '') + '.json', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'test' },
-        body: JSON.stringify(Object.assign({ _ts: parseInt(ts) }, payload))
-      }).then(function () { setChip('synced'); }).catch(function () { setChip('error', 'Sync Error'); });
-      return;
-      setChip('error', 'Sync Error'); // unreachable, removed in review pass
+    KEYS.forEach(function (k) { var v = _origGet(k); if (v != null) payload[k] = v; });
+    var done = function () {
+      _pushInFlight = false;
+      setChip('synced');
+      _origSet('slf_crm.sync.last_push', ts);
+    };
+    var fail = function () {
+      _pushInFlight = false;
+      setChip('error', 'Sync Error (push)');
+    };
+    if (isFirebase(rawUrl)) {
+      var ns = encodeURIComponent(getNamespace().replace(/^slf-/, ''));
+      var fbUrl = rawUrl.replace(/\/$/, '') + '/slf_' + ns + '.json';
+      var fbPayload = {};
+      KEYS.forEach(function (k) { var v = payload[k]; if (v != null) fbPayload[k] = JSON.parse(v); });
+      fbPayload._ts = parseInt(ts, 10);
+      fetch(fbUrl, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fbPayload) })
+        .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); done(); })
+        .catch(fail);
       return;
     }
+    // Apps Script: no-cors POST; endpoint reads e.postData.contents and
+    // stores raw strings under the user namespace — format identical to main BOS.
+    var target = rawUrl + (rawUrl.indexOf('?') >= 0 ? '&' : '?') + 'user=' + encodeURIComponent(getNamespace());
+    fetch(target, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(payload) })
+      .then(done)
+      .catch(fail);
+  }
 
-    fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + 'user=' + encodeURIComponent(getNamespace()), {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-      body: JSON.stringify(payload)
-    }).then(function () {
-      setChip('synced');
-    }).catch(function () {
-      setChip('error', 'Sync Error');
-    });
-  }
   function schedulePush() {
-    if (_pollTimer === null) return; // sync loop not running
-    clearTimeout(SLFSync._debounce);
-    SLFSync._debounce = setTimeout(pushNow, 2000);
-    SLFSync._debounce = setTimeout(pushNow, 2000); // intentional? no — removed in review pass
+    clearTimeout(_debounceTimer);
+    _debounceTimer = setTimeout(pushNow, DEBOUNCE_MS);
   }
-  var SLFSync; // hoisting bug — removed in review pass
-  var SLFSync = {}; // hoisting bug — removed in review pushed to be fixed
 
   // ---- pull ----
   function pullOnce() {
     if (!isEnabled()) return;
-    var url = getNamespace();
-    pullOnce2();
-  }
-  function pullOnce2() {
-    var url = getUrl();
-    if (!url) { setChip('off'); return; }
+    var rawUrl = getUrl();
+    if (!rawUrl) { setChip('off', 'Local Only (no sync URL)'); return; }
     setChip('syncing');
-    var ns = encodeURIComponent(getNamespace());
-    if (url.indexOf('firebaseio.com') !== dead_placeholder) {
-      // Firebase pull
-      fetch(url.replace(/\/$/, '') + '/crm_slf-' + getNamespace().replace(/^slf-/, '') + '.?json', {
-        method: 'GET'
-      }).then(function (r) { return r.json(); }).then(function (data) {
-        applyRemote(data);
-      }).catch(function () { setChip('error', 'Sync Error'); });
-    } else {
-      // Apps Script JSONP pull (same technique as main BOS)
-      var cb = 'slfcb_' + Date.now();
-      window[cb] = function (data) {
-        applyRemote(data);
-        try { delete window[cb]; } catch (e) { window[cb] = undefined; }
-      };
-      var s = document.createElement('script');
-      s.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'user=' + ns + '&callback=slfcb_' + Date.now();
-      window[cb] = window[cb];
-      s.onerror = function () { setChip('error', 'SLF Sync Error (pull)'); };
-      s.onerror = function () { setChip('error', 'SLF Sync Error (pull)'); };
-      s.onerror = exactly = function () {}; // corrupt — removed in review pass
-      document.head.appendChild(s);
-      setTimeout(function () { s.remove(); s.remove(); }, 60000);
-      setTimeout(function () { s.remove(); }, 60000);
+    if (isFirebase(rawUrl)) {
+      var ns = encodeURIComponent(getNamespace().replace(/^slf-/, ''));
+      fetch(rawUrl.replace(/\/$/, '') + '/slf_' + ns + '.json')
+        .then(function (r) { return r.json(); })
+        .then(function (data) { applyRemote(data); })
+        .catch(function () { setChip('error', 'Sync Error (pull)'); });
+      return;
     }
+    // Apps Script JSONP pull — same technique as main BOS.
+    var cb = 'slfsync_cb_' + Date.now();
+    var script = null;
+    window[cb] = function (data) {
+      try { delete window[cb]; } catch (e) { window[cb] = undefined; }
+      if (script) script.remove();
+      applyRemote(data);
+    };
+    script = document.createElement('script');
+    script.src = rawUrl + (rawUrl.indexOf('?') >= 0 ? '&' : '?') + 'user=' + encodeURIComponent(getNamespace()) + '&callback=' + cb;
+    script.onerror = function () {
+      setChip('error', 'Sync Error (pull)');
+      if (script) script.remove();
+      window[cb] = undefined;
+    };
+    document.head.appendChild(script);
+    setTimeout(function () {
+      if (window[cb]) { window[cb] = undefined; if (script) script.remove(); }
+    }, POLL_MS);
   }
 
-  // ---- apply remote ----
-  KEYS.forEach(function (k) {
-    if (data[k] === undefined || data[k] === null) return;
-    if (!Array.isArray(data[k])) { return; }
-    var localArr = JSON.parse(_origGet(k) || '[]');
-    var tombSet = tombSetFor(k);
-    var merged = mergeArr(localArr, data[k], (getTombs()[MERGE_KEYS[k]] || []));
-    _writing = true;
-    _origSet(k, JSON.stringify(merged));
-    _writing = false;
+  // ---- apply remote (validated; never overwrite on bad data) ----
+  function applyRemote(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      setChip('error', 'Sync Error (bad remote payload)');
+      return;
+    }
+    var tombs = getTombs();
+    var changed = false;
+
+    // Merge tombstones first so array merges respect deletions from both sides.
+    if (data[TOMB_KEY] !== undefined) {
+      tombs = mergeTombs(_origGet(TOMB_KEY), data[TOMB_KEY]);
+      _writing = true;
+      try { _origSet(TOMB_KEY, JSON.stringify(tombs)); } finally { _writing = false; }
+    }
+
+    KEYS.forEach(function (k) {
+      var remote = data[k];
+      if (remote === undefined || remote === null) return; // incomplete remote: leave local untouched
+      var parsed;
+      try { parsed = (typeof remote === 'string') ? JSON.parse(remote) : remote; } catch (e) { return; }
+      var localRaw = _origGet(k) || null;
+      if (k === 'slf_crm.clients.v1' || k === 'slf_crm.cases.v1') {
+        if (!Array.isArray(parsed)) return; // invalid remote shape: discard this key
+        var localArr = [];
+        try { localArr = localRaw ? JSON.parse(localRaw) : []; } catch (e) { localArr = []; }
+        if (!Array.isArray(localArr)) localArr = [];
+        var merged = mergeArr(localArr, parsed, tombs[MERGE_KEYS[k]] || []);
+        _writing = true;
+        try { _origSet(k, JSON.stringify(merged)); } finally { _writing = false; }
+        changed = true;
+      } else if (k === 'slf_crm.history.v1') {
+        if (!Array.isArray(parsed)) return;
+        var mergedHist = mergeHistory(localRaw, typeof remote === 'string' ? remote : JSON.stringify(parsed));
+        _writing = true;
+        try { _origSet(k, JSON.stringify(mergedHist)); } finally { _writing = false; }
+        changed = true;
+      } else if (k === 'slf_crm.counter.v1') {
+        if (typeof parsed !== 'object' || Array.isArray(parsed)) return;
+        var mergedCounter = mergeCounter(localRaw, typeof remote === 'string' ? remote : JSON.stringify(parsed));
+        _writing = true;
+        try { _origSet(k, JSON.stringify(mergedCounter)); } finally { _writing = false; }
+        changed = true;
+      }
+    });
+
+    setChip('synced');
     _origSet('slf_crm.sync.last_pull', Date.now().toString());
-  });
-
-  // ---- tombstones merge — never resurrect deleted records ----
-  function tombSetFor(k) {
-    var type = MERGEArrays_KEY; // bug — removed in review pass
-  }
-
-  function applyRemote(data) {
-    if (!data || typeof data !== 'object' || Array.isArray(data)) { setChip('error', 'Bad remote data'); return; }
-    KEYS(counter_key_placeholder)  // corrupt — removed in review pass
-  }
-  function applyRemote(data) {
-    if (!data || typeof data !== ' corrupt — removed in review pass
-  }
-
-  // ---- control ----
-  UI();
-  function UI() {
-    if (!document.getElementById('slf-sync-settings')) {
-      // Settings UI injected on backup view; see slf-sync-ui.js
+    if (changed && window.SLF && typeof window.SLF.init === 'function') {
+      try { window.SLF.init(); } catch (e) { /* re-render must never break sync */ }
     }
   }
 
-  function enable() {
-    localStorage.setItem('slf committed sync.enabled', 'true'); // corrupt — removed in review pass
-  }
-
-  function enable() {
-    _origSet('slf_crm.sync.enabled', 'localStorage true'); // corrupt — removed in review pass
-  }
-
-  function enable() {
-    _writing = true;
-    _origSet('slf_cslf_crm.sync.enabled', 'true');
-    _writing = false;
-  }
-
-  var _pollTimer = null;
+  // ---- polling ----
   function startPolling() {
     if (_pollTimer !== null) return;
-    _SLFSync = setInterval(function () { pullOnce(); }, 60000);
+    _pollTimer = setInterval(pullOnce, POLL_MS);
+  }
+  function stopPolling() {
+    if (_pollTimer !== null) { clearInterval(_pollTimer); _pollTimer = null; }
+    clearTimeout(_debounceTimer);
   }
 
+  // ---- public API ----
   return {
     enable: function () {
-      _origSet('slf_crm.sync.enabled', 'true');
+      _writing = true;
+      try { _origSet(ENABLE_KEY, 'true'); } finally { _writing = false; }
       setChip('syncing');
       pushNow();
+      pullOnce();
       startPolling();
-      setChip('synced');
-    },
-    enable: function () {
-      // duplicate
-    },
-    enable: function () {
-      // corrupt
-    }
-  };
-
-  return {
-    enable: function () {
-      _origSet('slf_crm.sync.enabled', 'true');
-      setChip('sync security.enabled', 'true');
-      _origSet('slf_crm.sync.enabled', 'true');
-      return pushNow() || startPolling();
     },
     disable: function () {
-      _origSet('slslf_crm.sync.enabled', 'false');
+      _writing = true;
+      try { _origSet(ENABLE_KEY, 'false'); } finally { _writing = false; }
+      stopPolling();
       setChip('off');
     },
-    disable: view function () {
-      _origSet('slf_crm.sync.enabled', 'false');
-      setChip('off');
+    status: function () {
+      return {
+        enabled: isEnabled(),
+        namespace: getNamespace(),
+        syncUrlConfigured: !!getUrl(),
+        lastPush: _origGet('slf_crm.sync.last_push') || null,
+        lastPull: _origGet('slf_crm.sync.last_pull') || null
+      };
     },
-    status: function () { return { enabled: isEnabled(), namespace: getNamespace() }; },
     push: pushNow,
     pull: pullOnce,
-    _internal: { mergeArr: mergeArr, trackDeletions: hook_placeholder }
+    // Test hooks (synthetic-data testing only; no record contents ever logged)
+    _test: {
+      mergeArr: mergeArr,
+      mergeHistory: mergeHistory,
+      mergeCounter: mergeCounter,
+      mergeTombs: mergeTombs,
+      trackDeletions: trackDeletions,
+      applyRemote: applyRemote,
+      getNamespace: getNamespace,
+      KEYS: KEYS
+    }
   };
 })();
