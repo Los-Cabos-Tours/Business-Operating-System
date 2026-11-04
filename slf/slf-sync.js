@@ -19,6 +19,9 @@
 //    non-array values for array keys => pull discarded, local
 //    data untouched.
 //  - Never logs record contents — only counts and IDs.
+//  - Self-contained UI: injects its own status chip and controls
+//    into the sidebar; slf-app.js and existing SLF views are
+//    never modified.
 // ============================================================
 var SLFSync = (function () {
   'use strict';
@@ -51,13 +54,13 @@ var SLFSync = (function () {
     var c = document.getElementById('slf-sync-chip');
     if (!c) return;
     var txt;
-    if (state === 'syncing') { c.className = 'slf-sync-chip busy'; txt = 'Syncing...'; }
+    if (state === 'syncing') { c.style.color = 'rgba(240,234,214,0.8)'; txt = 'Syncing...'; }
     else if (state === 'synced') {
-      c.className = 'slf-sync-chip ok';
+      c.style.color = '#6BCB77';
       txt = 'Synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
-    else if (state === 'error') { c.className = 'slf-sync-chip err'; txt = label || 'Sync Error'; }
-    else { c.className = 'slf-sync-chip off'; txt = label || 'Local Only'; }
+    else if (state === 'error') { c.style.color = '#FF8A5C'; txt = label || 'Sync Error'; }
+    else { c.style.color = 'rgba(240,234,214,0.6)'; txt = label || 'Local Only'; }
     c.textContent = txt;
   }
 
@@ -304,8 +307,79 @@ var SLFSync = (function () {
     clearTimeout(_debounceTimer);
   }
 
+  // ---- UI (self-contained; injected into the stable sidebar, so
+  //      slf-app.js view re-renders never wipe it) ----
+  function injectUI() {
+    if (document.getElementById('slf-sync-box')) return;
+    var aside = document.querySelector('aside');
+    if (!aside) return;
+    var box = document.createElement('div');
+    box.id = 'slf-sync-box';
+    box.style.cssText = 'padding:14px 20px;border-top:1px solid var(--line);';
+
+    var title = document.createElement('div');
+    title.textContent = 'CLOUD SYNC';
+    title.style.cssText = 'font-size:9.5px;color:var(--muted);letter-spacing:1.5px;margin-bottom:6px;';
+    box.appendChild(title);
+
+    var chip = document.createElement('div');
+    chip.id = 'slf-sync-chip';
+    chip.style.cssText = 'font-size:11px;color:var(--muted);margin-bottom:8px;';
+    chip.textContent = 'Local Only';
+    box.appendChild(chip);
+
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:6px;';
+    var toggleBtn = document.createElement('button');
+    toggleBtn.id = 'slf-sync-toggle';
+    toggleBtn.className = 'btn small ghost';
+    toggleBtn.style.cssText = 'flex:1;font-size:10.5px;padding:5px 8px;';
+    toggleBtn.addEventListener('click', function () {
+      if (isEnabled()) SLFSync.disable(); else SLFSync.enable();
+      refreshUI();
+    });
+    btnRow.appendChild(toggleBtn);
+    box.appendChild(btnRow);
+
+    var note = document.createElement('div');
+    note.id = 'slf-sync-note';
+    note.style.cssText = 'font-size:9.5px;color:var(--muted);margin-top:6px;line-height:1.4;';
+    box.appendChild(note);
+
+    aside.appendChild(box);
+  }
+
+  function refreshUI() {
+    var toggleBtn = document.getElementById('slf-sync-toggle');
+    var note = document.getElementById('slf-sync-note');
+    var enabled = isEnabled();
+    if (toggleBtn) toggleBtn.textContent = enabled ? 'Disable Sync' : 'Enable Cloud Sync';
+    if (note) {
+      if (enabled) {
+        note.textContent = 'Namespace: ' + getNamespace() + '. Sensitive loan data syncs to your configured backend. Disable any time; local data always stays.';
+      } else {
+        note.textContent = isEnabled() ? '' : 'Off by default. Enabling syncs SLF data to your configured BOS sync backend (namespace: ' + getNamespace() + '). No data leaves this device while off.';
+      }
+    }
+    if (!enabled) setChip('off', 'Local Only');
+  }
+
+  // ---- init (runs on script load / DOM ready) ----
+  function init() {
+    injectUI();
+    if (isEnabled()) {
+      refreshUI();
+      setChip('syncing');
+      pullOnce();
+      startPolling();
+    } else {
+      refreshUI();
+      setChip('off');
+    }
+  }
+
   // ---- public API ----
-  return {
+  var SLFSync = {
     enable: function () {
       _writing = true;
       try { _origSet(ENABLE_KEY, 'true'); } finally { _writing = false; }
@@ -331,6 +405,7 @@ var SLFSync = (function () {
     },
     push: pushNow,
     pull: pullOnce,
+    init: init,
     // Test hooks (synthetic-data testing only; no record contents ever logged)
     _test: {
       mergeArr: mergeArr,
@@ -343,4 +418,12 @@ var SLFSync = (function () {
       KEYS: KEYS
     }
   };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  return SLFSync;
 })();
