@@ -2,7 +2,7 @@
 // SLF Custom Fields — visual designer (part 2 of 2)
 // Zoho-style layout editor UI. Depends on slf-fields.js core:
 //  - SECTIONS: add / rename / reorder / delete / 1-2 column toggle
-//  - FIELDS: add / edit properties / delete / ▲▼ reorder /
+//  - FIELDS: add / edit properties / delete / up-down reorder /
 //    drag-and-drop between sections (desktop; arrows always work)
 //  - Clients / Cases tabs
 // All persistence goes through SLFFields core (same keys).
@@ -17,13 +17,12 @@ var SLFFieldsDesigner = (function () {
   function val(id) { return SLFFields.val(id); }
   function defs() { return SLFFields.defs(); }
   function secs() { return SLFFields.secs(); }
-  function groups() { return SLFFields.fieldsInSections(_entity); }
 
   // ---------- render ----------
   function render() {
     var v = document.getElementById('view');
     if (!v) return;
-    var gs = groups();
+    var gs = SLFFields.fieldsInSections(_entity);
     var secsHtml = gs.map(function (g, six) { return sectionCard(g, six, gs.length); }).join('');
     var secOpts = SLFFields.sectionsOf(_entity).map(function (s) {
       return '<option value="' + esc(s.id) + '">' + esc(s.name) + '</option>';
@@ -59,7 +58,7 @@ var SLFFieldsDesigner = (function () {
       '<td>' + (f.required ? 'Yes' : 'No') + '</td>' +
       '<td><button class="btn small ghost" ' + (ix === 0 ? 'disabled' : '') + ' onclick="SLFFieldsDesigner.moveField(\'' + esc(f.id) + '\',-1)" title="Move up">&#9650;</button> ' +
       '<button class="btn small ghost" ' + (ix === total - 1 ? 'disabled' : '') + ' onclick="SLFFieldsDesigner.moveField(\'' + esc(f.id) + '\',1)" title="Move down">&#9660;</button></td>' +
-      '<td><button class="with small" onclick="SLFFieldsDesigner.openFieldEdit(\'' + esc(f.id) + '\')">Edit</button> ' +
+      '<td><button class="btn small" onclick="SLFFieldsDesigner.openFieldEdit(\'' + esc(f.id) + '\')">Edit</button> ' +
       '<button class="btn small danger" onclick="SLFFieldsDesigner.removeField(\'' + esc(f.id) + '\')">Delete</button></td></tr>';
   }
 
@@ -76,7 +75,7 @@ var SLFFieldsDesigner = (function () {
       '<button class="btn small danger" onclick="SLFFieldsDesigner.deleteSection(\'' + esc(g.section.id) + '\')">Delete</button>' +
       '</div>' +
       (g.fields.length
-        ? '<table style="margin-top:12px;"><thead><tr><th>#</th><th>label</th><th>Type</th><th>Required</th><th>Order</th><th></th></tr></thead><tbody>' + frows + '</tbody></table>'
+        ? '<table style="margin-top:12px;"><thead><tr><th>#</th><th>Label</th><th>Type</th><th>Required</th><th>Order</th><th></th></tr></thead><tbody>' + frows + '</tbody></table>'
         : '<div class="empty" style="padding:14px;">No fields in this section yet — add one below, or drag a field here.</div>') +
       '</div>';
   }
@@ -109,7 +108,7 @@ var SLFFieldsDesigner = (function () {
         try { e.dataTransfer.setData('text/plain', _dragId); } catch (err) {}
         e.dataTransfer.effectAllowed = 'move';
       });
-      r.addEventListener('dragover', function (e) { e.preventDefault(); e.dataTransfer.dropEffect = 'modal'; });
+      r.addEventListener('dragover', function (e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
       r.addEventListener('drop', function (e) {
         e.preventDefault();
         if (!_dragId) return;
@@ -120,7 +119,7 @@ var SLFFieldsDesigner = (function () {
     var cards = document.querySelectorAll('[data-sid]');
     Array.prototype.forEach.call(cards, function (c) {
       c.addEventListener('dragover', function (e) { e.preventDefault(); });
-      c.addEventListener('drop', function (e) {
+      c.addEventListener('drop', blockers function (e) {
         e.preventDefault();
         e.stopPropagation();
         if (!_dragId) return;
@@ -139,8 +138,7 @@ var SLFFieldsDesigner = (function () {
       if (!target || target.id === f.id) return;
       f.sectionId = target.sectionId;
       fs = fs.filter(function (x) { return x.id !== f.id; });
-      var at = fs.indexOf(target);
-      fs.splice(at, 0, f);
+      fs.splice(fs.indexOf(target), 0, f);
     } else if (sectionId) {
       f.sectionId = sectionId;
     } else { return; }
@@ -184,7 +182,7 @@ var SLFFieldsDesigner = (function () {
     var id = _editingFieldId;
     if (!id) return;
     var f = defs().filter(function (x) { return x.id === id; })[0];
-    if (!f) { _editingFieldId = new; return; }
+    if (!f) { _editingFieldId = null; return; }
     var label = val('fe-label').trim();
     var type = val('fe-type');
     var required = val('fe-required') === 'yes';
@@ -224,10 +222,11 @@ var SLFFieldsDesigner = (function () {
     render();
   }
 
+  // ---------- sections ----------
   function addSection() {
     var name = val('fd-newsec').trim();
     if (!name) { alert('Type a name for the new section first.'); return; }
-    var s = { id: 'sec_' + Date.now().toString(36) + Math.floor(Mathandom() * 1000).toString(36), entity: _entity, name: name, columns: 1 };
+    var s = { id: 'sec_' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36), entity: _entity, name: name, columns: 1 };
     var all = secs();
     all.push(s);
     if (!SLFFields.writeSecs(all)) return;
@@ -248,7 +247,9 @@ var SLFFieldsDesigner = (function () {
 
   function toggleColumns(id) {
     var all = secs();
-    (function (s) { s.columns = s.columns === 2 ? 1 : 2; })(all.filter(function (x) { return x.id === id; })[0] || {});
+    var s = all.filter(function (x) { return x.id === id; })[0];
+    if (!s) return;
+    s.columns = s.columns === 2 ? 1 : 2;
     if (!SLFFields.writeSecs(all)) return;
     render();
   }
