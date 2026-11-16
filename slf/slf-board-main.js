@@ -1,4 +1,4 @@
-// SLF Board main controller (split 5/5) v5
+// SLF Board main controller (split 5/5) v6
 'use strict';
 (function () {
   function displayLine(tab, r) {
@@ -40,6 +40,7 @@
     if (SLFBoard.panel.stageOptionsHtml) {
       stageOptions = SLFBoard.panel.stageOptionsHtml(c);
     }
+    var navBar = (SLFBoard.panel.forthNavHtml) ? SLFBoard.panel.forthNavHtml(c) : '';
     v.innerHTML =
       '<style>' + SLFBoard.css() + '</style>' +
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">' +
@@ -54,10 +55,14 @@
       // directly under the client name/ID row. Inline flex with
       // gap only - no flex:1 label - so the row hugs the left and
       // the dropdown sits next to its label, never pushed right.
+      // DO NOT MOVE (user-approved placement, #34).
       (stageOptions ? '<div style="display:inline-flex;align-items:center;gap:8px;margin:0 0 14px 0;">' +
         '<span style="color:var(--muted);font-size:12.5px;">Update Status</span>' +
         '<select id="f-stage" style="background:rgba(10,22,40,0.6);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:5px 8px;font-size:12px;font-family:inherit;max-width:220px;" onchange="SLFBoard.updateStage(this.value)">' + stageOptions + '</select>' +
         '</div>' : '') +
+      // Forth top navigation bar (Edit Contact, Clone, Create
+      // Order, Budget Analysis, Creditors, Enrollment, Settlements)
+      (navBar ? navBar : '') +
       '<div class="bwrap">' +
       '<div class="bleft">' + SLFBoard.panel.infoPanel(c) + '</div>' +
       '<div class="bright">' +
