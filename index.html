@@ -9,6 +9,11 @@
   </style>
 </head>
 <body>
+  <!-- Cross-device login: pulls the shared user-account list from the
+       configured sync backend into this browser's storage before login
+       is attempted, so any account works on any computer or device.
+       Same-origin with crm.html: both share the same localStorage. -->
+  <script src="js/cross-device-login.js"></script>
   <iframe id="bos-frame" src="crm.html" title="Aetherion"></iframe>
   <script>
     (function () {
