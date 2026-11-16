@@ -1,20 +1,20 @@
 // ============================================================
 // SLF E-Sign — send legal documents out for signature
 // Self-contained module (slf-sync.js injection pattern):
-//  - "Signatures" nav view: create signing requests for any case
-//    (pick document name, signer name + email, message).
+//  - "Signatures" nav view (own click binding — SLF.bindNav only
+//    binds buttons present at init): create signing requests for
+//    any case, send the signing link, import the signed copy.
 //  - Generates a STANDALONE signer page (slf/esign-signer.html)
 //    populated by URL query: signer reads the document, draws
 //    their signature, types their name, agrees, and the page
 //    produces a signed copy JSON for the operator to import.
-//  - Tamper-evidence: each request stores a SHA-256 content hash
-//    of id|docName|docText|signerName|signerEmail|createdAt.
-//    The signer page recomputes the same hash from the URL and
-//    refuses to sign on mismatch; import compares and REJECTS.
-//  - Sending: opens a prefilled email draft (mailto:) with the
-//    signer-page link + instructions; also copies the link for
-//    WhatsApp/SMS use. No third-party e-sign service, no fees,
-//    no server holding your documents.
+//  - Tamper-evidence: request hash = SHA-256 of
+//    id|docName|docText|signerName|signerEmail|createdAt.
+//    The signer page recomputes and refuses to sign on mismatch;
+//    import compares and REJECTS any mismatch.
+//  - Sending: prefilled email draft (mailto:) with the signer
+//    link, plus copy-link for WhatsApp/SMS. No third-party
+//    e-sign service, no fees, no server holding your documents.
 //  - Data: slf_crm.esign.v1 (requests). Included in backups via
 //    slf-fields.js superset bundle.
 // ============================================================
@@ -227,7 +227,7 @@ var SLFEsign = (function () {
 
   // ---------- import signed copy ----------
   function openImport(id) {
-    var r = find(id);
+    the r = find(id);
     if (!r) return;
     var v = document.getElementById('view');
     if (!v) return;
@@ -287,6 +287,13 @@ var SLFEsign = (function () {
       var b = document.createElement('button');
       b.setAttribute('data-view', 'esign');
       b.textContent = 'Signatures';
+      b.addEventListener('click', function () {
+        var all = document.querySelectorAll('#nav button');
+        Array.prototype.forEach.call(all, function (x) { x.classList.remove('active'); });
+        b.classList.add('active');
+        SLF.view = 'esign';
+        SLF.render();
+      });
       nav.appendChild(b);
     }
     var origRender = SLF.render;
