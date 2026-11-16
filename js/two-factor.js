@@ -1,9 +1,11 @@
 // ============================================================
-// BOS Two-Factor Authentication — email 6-digit PIN — v1
+// BOS Two-Factor Authentication — email 6-digit PIN — v1.2
 // Owner order (2026-11-16): every login must also enter a fresh
 // 6-digit PIN emailed to the user, so a stolen password alone
 // can never get anyone in. The SUPER ADMIN (owner) is exempt:
 // they can log in at any time, from any device, with no PIN.
+// Owner order (updated): PIN expires after 2 MINUTES. Three
+// wrong attempts block the login.
 //
 // HOW IT WORKS (parent page, same-origin with the CRM frame):
 //  1. Watch for a fresh sign-in (aetherion_user session).
@@ -13,11 +15,12 @@
 //     email it to the user's address on file (aetherion_users).
 //     The CRM's own login gate re-engages behind the overlay,
 //     so the session cannot be used while the PIN is pending.
-//  4. User types the PIN. Correct -> session restored, this
-//     device is verified for that account. Wrong 5 times ->
-//     challenge voided, sign in again.
+//  4. User types the PIN within 2 minutes. Correct -> session
+//     restored, this device is verified for that account.
+//     3 wrong entries -> login is blocked; they must start the
+//     sign-in again from the beginning.
 //  5. Every NEW sign-in requires a new PIN (verified state is
-//     cleared on sign-out). PINs expire after 10 minutes.
+//     cleared on sign-out).
 //
 // EMAIL DELIVERY: the sync backend (Apps Script) must include
 // the email handler (see repo docs). Without it, no email can
@@ -36,9 +39,9 @@
   var SESSION_KEY = 'aetherion_user';
   var PENDING_KEY = 'aetherion_2fa_pending';
   var VERIFIED_KEY = 'aetherion_2fa_verified';
-  var PIN_TTL_MS = 10 * 60 * 1000;
+  var PIN_TTL_MS = 2 * 60 * 1000;      // owner order: 2 minutes
   var VERIFIED_TTL_MS = 12 * 60 * 60 * 1000;
-  var MAX_ATTEMPTS = 5;
+  var MAX_ATTEMPTS = 3;                // owner order: 3 wrong attempts block the login
 
   function ls(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -99,7 +102,7 @@
       '<input id="bos-2fa-input" inputmode="numeric" maxlength="6" placeholder="6-digit code" style="width:100%;box-sizing:border-box;padding:11px 12px;font-size:18px;letter-spacing:6px;text-align:center;background:rgba(10,22,40,0.6);border:1px solid rgba(201,168,76,0.2);border-radius:8px;color:#F0EAD6;outline:none;" />' +
       '<div id="bos-2fa-error" style="font-size:11px;color:#FF6B6B;margin-top:8px;min-height:14px;"></div>' +
       '<button id="bos-2fa-verify" style="width:100%;margin-top:10px;padding:10px;border-radius:8px;border:1px solid rgba(201,168,76,0.45);background:rgba(201,168,76,0.15);color:#C9A84C;font-size:13px;font-weight:600;cursor:pointer;">Verify &amp; Sign In</button>' +
-      '<div id="bos-2fa-hint" style="font-size:11px;color:#A8B8C8;margin-top:14px;line-height:1.5;">Didn\'t get the email? Check spam, or press Resend. Codes expire in 10 minutes.</div>' +
+      '<div id="bos-2fa-hint" style="font-size:11px;color:#A8B8C8;margin-top:14px;line-height:1.5;">Didn\'t get the email? Check spam, or press Resend. Codes expire in 2 minutes.</div>' +
       '<div style="display:flex;gap:8px;margin-top:10px;">' +
       '<button id="bos-2fa-resend" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Resend code</button>' +
       '<button id="bos-2fa-cancel" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Cancel</button>' +
@@ -180,7 +183,7 @@
       lsSet(PENDING_KEY, JSON.stringify(p));
       if (p.attempts >= MAX_ATTEMPTS) {
         lsDel(PENDING_KEY);
-        errEl.textContent = 'Too many wrong codes. Sign in again.';
+        errEl.textContent = 'Too many wrong codes. Login blocked — sign in again.';
         setTimeout(function () { hideOverlay(); }, 1600);
         return;
       }
