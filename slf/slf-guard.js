@@ -9,7 +9,7 @@
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '2.2';
+  var VERSION = '2.4';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js',
     'slf-board-forms.js', 'slf-board-panel.js',
@@ -34,7 +34,7 @@
         }
       } else {
         ok = false;
-        failures.push(m + ' — could not fetched (HTTP ' + xhr.status + ')');
+        failures.push(m + ' — could not be fetched (HTTP ' + xhr.status + ')');
       }
     } catch (e) {
       ok = null;
