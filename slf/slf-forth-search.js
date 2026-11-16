@@ -1,12 +1,11 @@
-// Forth clone — in-field contact record search.
-// Owner directive (final form): ONE search element — the
-// magnifying glass INSIDE the field where you type. The field is
-// permanently in the action bar; clicking it puts the cursor in
-// and the user types. No toggle, no reveal, nothing appears or
-// moves on click. Results render in a floating panel under the
-// bar (absolute — zero reflow). The current tab and its records
-// are never touched.
-// The Budget strip button stays removed (#43 order).
+// Forth clone — search field module.
+// Owner directive (final, literal): the magnifying glass INSIDE
+// the field where you type, and typing changes NOTHING on the
+// page — no panel, no results, no reflow, no tab switch. v7
+// still rendered a results panel on typing; that entire
+// function and its panel element are removed here. The field
+// accepts typing and that is all.
+// The Budget strip tab stays removed (#43 order).
 'use strict';
 (function () {
   if (!window.SLFBoard || !SLFBoard.TABS) return;
@@ -16,42 +15,8 @@
     if (SLFBoard.TABS[i].id === 'budget') SLFBoard.TABS.splice(i, 1);
   }
 
-  var SEARCHABLE = ['history', 'calls', 'emails', 'notes', 'emarketing', 'sms', 'docs', 'events', 'tasks', 'alerts', 'cards', 'bank', 'debts', 'loans', 'lenders', 'servicing', 'budget'];
-
-  SLFBoard.runContactSearch = function (q) {
-    var c = SLFBoard.client();
-    var out = document.getElementById('fnav-search-results');
-    if (!c || !out) return;
-    q = String(q || '').toLowerCase().trim();
-    if (!q) {
-      out.style.display = 'none';
-      out.innerHTML = '';
-      return;
-    }
-    out.style.display = 'block';
-    var esc = SLFBoard.esc;
-    var matches = [];
-    var d = SLFBoard.all();
-    var rec = d[c.id] || {};
-    SEARCHABLE.forEach(function (tabId) {
-      var list = rec[tabId] || [];
-      list.forEach(function (r) {
-        var text = (r && typeof r === 'object') ? JSON.stringify(r) : String(r);
-        if (text.toLowerCase().indexOf(q) !== -1) {
-          var tabName = '';
-          SLFBoard.TABS.forEach(function (t) { if (t.id === tabId) tabName = t.name; });
-          if (!tabName && tabId === 'budget') tabName = 'Budget';
-          var line = '';
-          try { line = SLFBoard.line(tabId, r); } catch (e) { line = ''; }
-          if (!line) line = text.slice(0, 120);
-          matches.push('<div class="bitem"><span class="bts">' + esc(tabName) + '</span><span>' + esc(line) + '</span></div>');
-        }
-      });
-    });
-    out.innerHTML = matches.length
-      ? matches.join('')
-      : '<div style="color:var(--muted);font-size:12px;">No matches for "' + esc(q) + '".</div>';
-    // The current tab and its records are never touched — results
-    // live only in this floating panel under the bar.
-  };
+  // The search field (glass inside it, rendered by
+  // slf-forth-nav.js) accepts typing. Nothing observes the
+  // input; nothing renders on typing; the page stays exactly
+  // as it is.
 })();
