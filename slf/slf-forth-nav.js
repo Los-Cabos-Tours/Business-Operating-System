@@ -1,16 +1,13 @@
-// Forth clone — top navigation bar module v7.
-// Owner directive (stated repeatedly, final form): ONE search
-// element — the magnifying glass INSIDE the tab/field where you
-// type. Not a glass button beside a box (v5), not a glass that
-// reveals a box (v6). v7 renders a single search input in the
-// action bar with the glass icon embedded inside it on the left
-// (absolutely positioned SVG, pointer-events:none). The user
-// clicks the field and starts typing. Nothing toggles, nothing
-// appears, nothing moves — the field is always there, identical
-// before and after any click. Results render in a floating panel
-// under the bar (absolute, zero reflow); the current tab and
-// workspace are never touched.
-// Everything else identical to v6 (8 labeled actions, #34's
+// Forth clone — top navigation bar module v8.
+// Owner directive (final, literal): ONE element — the magnifying
+// glass INSIDE the field where you type. And when the user types
+// in that field, NOTHING on the page changes: no panel appears,
+// nothing moves, no tab switches, no workspace change. v7 still
+// revealed a floating results panel on typing — that was a
+// visible change and is removed in v8. The field is permanently
+// in the action bar; click it and type; the page stays exactly
+// as it is, before, during, and after typing.
+// Everything else identical to v7 (8 labeled actions, #34's
 // Update Status block untouched).
 'use strict';
 (function () {
@@ -25,11 +22,12 @@
       }
       // Single search field: glass icon INSIDE the input (left),
       // embedded via absolute positioning over a padded input.
-      // Click it, type. No toggle, no reveal — it never changes.
-      return '<div class="fnav" style="position:relative;display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 12px 0;padding:8px 12px;background:rgba(15,32,64,0.35);border:1px solid var(--line);border-radius:10px;">' +
+      // Click it, type. No toggle, no reveal, no results panel —
+      // typing changes nothing on screen.
+      return '<div class="fnav" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 12px 0;padding:8px 12px;background:rgba(15,32,64,0.35);border:1px solid var(--line);border-radius:10px;">' +
         '<span style="position:relative;display:inline-flex;align-items:center;flex:none;">' +
         '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>' +
-        '<input id="fnav-search-input" placeholder="Search this contact\'s records…" style="width:210px;max-width:210px;padding:6px 10px 6px 27px;font-size:12px;border-radius:7px;border:1px solid var(--line);background:rgba(10,22,40,0.6);color:var(--text);font-family:inherit;" oninput="SLFBoard.runContactSearch(this.value)" />' +
+        '<input id="fnav-search-input" placeholder="Search this contact\'s records…" style="width:210px;max-width:210px;padding:6px 10px 6px 27px;font-size:12px;border-radius:7px;border:1px solid var(--line);background:rgba(10,22,40,0.6);color:var(--text);font-family:inherit;" />' +
         '</span>' +
         item('Edit Contact', 'edit') +
         item('Clone', 'clone') +
@@ -43,9 +41,6 @@
         '<span style="color:var(--muted);font-size:11px;">Favorites</span>' +
         '<select id="fav-select" style="width:auto;max-width:150px;padding:4px 8px;font-size:11px;background:rgba(10,22,40,0.6);border:1px solid var(--line);border-radius:6px;color:var(--text);">' +
         '<option value="">— select —</option></select></span>' +
-        // Floating results panel — hidden until the user types;
-        // absolute, so nothing ever reflows.
-        '<div id="fnav-search-results" style="display:none;position:absolute;top:calc(100% + 6px);left:12px;z-index:30;width:420px;max-width:calc(100% - 24px);padding:8px 12px;background:#0E1F3C;border:1px solid var(--line);border-radius:10px;max-height:220px;overflow:auto;box-shadow:0 6px 18px rgba(4,10,20,0.5);"></div>' +
         '</div>';
     };
 
