@@ -23,8 +23,10 @@
        every non-superadmin account must enter a fresh 6-digit PIN emailed
        to their address on file. PIN expires after 2 minutes. Three wrong
        attempts block the login. Superadmin signs in at any time, no PIN.
-       ?v=1.2 cache-busts so browsers always fetch the current rules. -->
-  <script src="js/two-factor.js?v=1.2"></script>
+       v1.4: finds the sign-in record wherever it is stored so the PIN
+       challenge always fires; states plainly when a PIN was not emailed
+       (no backend URL / no email on file). ?v=1.4 cache-busts. -->
+  <script src="js/two-factor.js?v=1.4"></script>
   <iframe id="bos-frame" src="crm.html" title="Aetherion"></iframe>
   <script>
     (function () {
