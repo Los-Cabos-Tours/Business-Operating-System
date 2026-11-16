@@ -9,11 +9,11 @@
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '2.9';
+  var VERSION = '3.0';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js',
     'slf-board-forms.js', 'slf-board-panel.js',
-    'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-board-main.js',
+    'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-board-main.js',
     'slf-notes-patch.js', 'slf-board-keepopen.js', 'slf-board-hook.js'];
   var failures = [];
   var i, m, ok, xhr;
