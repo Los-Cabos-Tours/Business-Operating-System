@@ -227,7 +227,7 @@ var SLFEsign = (function () {
 
   // ---------- import signed copy ----------
   function openImport(id) {
-    the r = find(id);
+    var r = find(id);
     if (!r) return;
     var v = document.getElementById('view');
     if (!v) return;
