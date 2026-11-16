@@ -8,22 +8,19 @@
 // dead backend"):
 //  1. NEVER SEND TO THE DEAD BACKEND. If the configured CloudSync
 //     URL is the old one (account lost, can never send email),
-//     the PIN is NOT sent there. Refused, period.
-//  2. URL FIELD ON THE PIN BOX. When no valid backend is
-//     configured (or the configured one is dead), the PIN box
-//     shows an input where the new /exec URL can be pasted
-//     directly. Pressing "Send PIN to this URL" saves it to the
-//     same storage key the CRM's CloudSync settings read
-//     (aetherion_sync_url) and fires the PIN immediately — no
-//     dependence on the CRM settings screen at all.
-//  3. Kept: Cancel = full sign-out + reload; resend = fresh
-//     code + fresh clock; verify reports attempts; expired
-//     challenges auto-clear; one backend only.
+//     the PIN is NOT sent there. Refused.
+//  2. URL FIELD ON THE PIN BOX. When the backend is missing or
+//     dead, the PIN box shows an input where the new /exec URL
+//     can be pasted directly. "Save URL & Send PIN" writes it to
+//     aetherion_sync_url (the same key the CRM's CloudSync
+//     settings read) and fires the PIN immediately.
+//  3. Kept: one backend only; Cancel = full sign-out + reload;
+//     resend = fresh code + fresh clock; verify reports attempts;
+//     expired challenges auto-clear.
 // ============================================================
 (function () {
   'use strict';
 
-  // Embedded in the shell's iframe? The shell (index.html) runs 2FA.
   try { if (window.self !== window.top) return; } catch (e) { return; }
 
   var VERSION = '1.9';
@@ -32,11 +29,10 @@
   var PENDING_KEY = 'aetherion_2fa_pending';
   var VERIFIED_KEY = 'aetherion_2fa_verified';
   var SYNC_URL_KEY = 'aetherion_sync_url';
-  var PIN_TTL_MS = 2 * 60 * 1000;          // owner order: 2 minutes
+  var PIN_TTL_MS = 2 * 60 * 1000;
   var VERIFIED_TTL_MS = 12 * 60 * 60 * 1000;
-  var MAX_ATTEMPTS = 3;                    // owner order: 3 wrong attempts block
+  var MAX_ATTEMPTS = 3;
 
-  // The OLD, dead backend (account lost — can never send email).
   var OLD_BACKEND_ID = 'AKfycbwnKUCCXJrgkzLU1z665lDnnU1B6voYeuvdU9INNmWfXgeHPsJAapGUNR9yEafoLlJY';
   var SCRIPT_URL_RE = /^https:\/\/script\.google[a-z.]*\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec/;
 
@@ -51,12 +47,10 @@
     } catch (e) { return []; }
   }
 
-  // ---- v1.9: THE one backend — refused if dead ----
   function getSyncUrl() { return (ls(SYNC_URL_KEY) || '').trim(); }
   function isOldBackend(url) {
     return !!url && url.indexOf(OLD_BACKEND_ID) !== -1;
   }
-  // Returns { ok, url, dead, missing }
   function backendState() {
     var url = getSyncUrl();
     if (!url) return { ok: false, url: '', dead: false, missing: true };
@@ -70,7 +64,6 @@
     if (el) el.textContent = msg;
   }
 
-  // ---- session discovery ----
   function rawSession() {
     var s = null;
     try { s = JSON.parse(ls(SESSION_KEY) || 'null'); } catch (e) { s = null; }
@@ -99,7 +92,7 @@
           return { key: k, obj: v };
         }
       }
-    } catch (e) { /* storage blocked */ }
+    } catch (e) {}
     return null;
   }
 
@@ -120,7 +113,7 @@
         break;
       }
     }
-    if (!s.id) s.id = 'u:' + s.username; // stable fallback id
+    if (!s.id) s.id = 'u:' + s.username;
     return s;
   }
 
@@ -129,7 +122,6 @@
     return r === 'superadmin';
   }
 
-  // ---- pending challenge (expiry checked here) ----
   function getPending() {
     var p = null;
     try { p = JSON.parse(ls(PENDING_KEY) || 'null'); } catch (e) { return null; }
@@ -160,16 +152,11 @@
     return null;
   }
 
-  // ---- email the PIN to THE one backend (refused if dead — v1.9) ----
   function sendPinEmail(email, pin, username) {
     var st = backendState();
     if (!st.ok) {
-      if (st.dead) {
-        return { sent: false, url: st.url, dead: true, error: 'the configured backend is the OLD DEAD one — send REFUSED' };
-      }
-      if (st.missing) {
-        return { sent: false, url: '', dead: false, error: 'no CloudSync backend URL is configured on this device' };
-      }
+      if (st.dead) return { sent: false, url: st.url, dead: true, error: 'the configured backend is the OLD DEAD one — send REFUSED' };
+      if (st.missing) return { sent: false, url: '', dead: false, error: 'no CloudSync backend URL is configured on this device' };
       return { sent: false, url: st.url, dead: false, error: 'the configured URL is not a valid Apps Script /exec URL' };
     }
     var payload = {
@@ -188,7 +175,6 @@
     }
   }
 
-  // ---- overlay UI ----
   var overlay = null;
   function buildOverlay() {
     if (document.getElementById('bos-2fa-overlay')) return;
@@ -208,7 +194,6 @@
       '<button id="bos-2fa-resend" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Resend code</button>' +
       '<button id="bos-2fa-cancel" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Cancel</button>' +
       '</div>' +
-      // v1.9: URL field + send button, shown when the backend is missing or dead
       '<div id="bos-2fa-urlrow" style="display:none;margin-top:14px;text-align:left;">' +
       '<div style="font-size:11px;color:#FF6B6B;margin-bottom:6px;" id="bos-2fa-urlrow-reason"></div>' +
       '<input id="bos-2fa-url" type="url" placeholder="Paste your NEW Apps Script /exec URL here" style="width:100%;box-sizing:border-box;padding:9px 10px;font-size:11px;background:rgba(10,22,40,0.6);border:1px solid rgba(201,168,76,0.2);border-radius:8px;color:#F0EAD6;outline:none;" />' +
@@ -245,7 +230,6 @@
     document.getElementById('bos-2fa-input').focus();
   }
 
-  // v1.9: show/hide the URL field depending on backend state
   function refreshUrlRow() {
     var row = document.getElementById('bos-2fa-urlrow');
     var reason = document.getElementById('bos-2fa-urlrow-reason');
@@ -262,14 +246,13 @@
     }
   }
 
-  // v1.9: save the pasted URL (same key the CRM reads) and fire the PIN
   function saveUrlAndSend() {
     var p = getPending();
     if (!p) { hideOverlay(); return; }
     var urlEl = document.getElementById('bos-2fa-url');
-    var url = (urlEl && urlEl.value || '').trim();
+    var url = ((urlEl && urlEl.value) || '').trim();
     if (!SCRIPT_URL_RE.test(url)) {
-      setStatus('That does not look like an Apps Script /exec URL. It must start with https://script.google.com/... and end with /exec.');
+      setStatus('That does not look like an Apps Script /exec URL. It must start with https://script.google.com/ and end with /exec.');
       return;
     }
     if (isOldBackend(url)) {
@@ -277,10 +260,10 @@
       return;
     }
     lsSet(SYNC_URL_KEY, url);
-    // Fire the PIN to the new backend immediately.
     var r = sendPinEmail(p.email, p.pin, p.session.username);
     if (r.sent) {
       setStatus('URL SAVED and PIN sent to the new backend:\n' + url + '\nCheck ' + (p.email ? maskEmail(p.email) : 'your email') + ' (and spam).');
+      refreshUrlRow();
     } else {
       setStatus('URL SAVED, but PIN send failed: ' + r.error);
     }
@@ -292,7 +275,6 @@
     overlay = null;
   }
 
-  // ---- toast: no more silent skips ----
   function toast(msg) {
     var t = document.getElementById('bos-2fa-toast');
     if (t) return;
@@ -301,13 +283,12 @@
     t.style.cssText = 'position:fixed;bottom:18px;right:18px;z-index:100000;background:#0A1628;border:1px solid rgba(201,168,76,0.45);color:#F0EAD6;font-family:Inter,sans-serif;font-size:12px;padding:10px 14px;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);max-width:340px;line-height:1.5;';
     t.textContent = msg;
     document.body.appendChild(t);
-    won't need this. setTimeout(function () {
+    setTimeout(function () {
       var el = document.getElementById('bos-2fa-toast');
       if (el && el.parentNode) el.parentNode.removeChild(el);
     }, 6000);
   }
 
-  // ---- challenge lifecycle ----
   function startChallenge(s, found) {
     var email = findUserEmail(s);
     var pin = String(Math.floor(100000 + Math.random() * 900000));
@@ -328,12 +309,10 @@
       var r = sendPinEmail(email, pin, s.username);
       if (r.sent) {
         setStatus('PIN request SENT to the one backend:\n' + r.url + '\nCheck that address (and spam) — code expires in 2 minutes.');
+      } else if (r.dead) {
+        setStatus('PIN NOT SENT — REFUSED. The configured backend is the OLD DEAD one:\n' + r.url + '\nPaste your NEW /exec URL in the box below and press Save URL & Send.');
       } else {
-        if (r.dead) {
-          setStatus('PIN NOT SENT — REFUSED. The configured backend is the OLD DEAD one:\n' + r.url + '\nPaste your NEW /exec URL in the box below and press Save URL & Send.');
-        } else {
-          setStatus('PIN request NOT SENT — ' + r.error + '.\nIf you have a new URL, paste it in the box below.');
-        }
+        setStatus('PIN request NOT SENT — ' + r.error + '.\nIf you have a new URL, paste it in the box below.');
       }
     } else {
       setStatus('PIN NOT SENT — no email address on file for "' + s.username + '". Set it in Users & Access.');
@@ -354,12 +333,10 @@
       var r = sendPinEmail(p.email, p.pin, p.session.username);
       if (r.sent) {
         setStatus('RESENT to the one backend:\n' + r.url);
+      } else if (r.dead) {
+        setStatus('RESEND REFUSED — the configured backend is the OLD DEAD one.\nPaste your NEW /exec URL in the box below and press Save URL & Send.');
       } else {
-        if (r.dead) {
-          setStatus('RESEND REFUSED — the configured backend is the OLD DEAD one.\nPaste your NEW /exec URL in the box below and press Save URL & Send.');
-        } else {
-          setStatus('RESEND FAILED — ' + r.error + '.\nIf you have a new URL, paste it in the box below.');
-        }
+        setStatus('RESEND FAILED — ' + r.error + '.\nIf you have a new URL, paste it in the box below.');
       }
     } else {
       setStatus('RESEND FAILED — no email on file for "' + p.session.username + '".');
@@ -367,7 +344,6 @@
     document.getElementById('bos-2fa-input').focus();
   }
 
-  // ---- CANCEL = FULL SIGN-OUT (v1.7, kept) ----
   function cancelChallenge() {
     lsDel(PENDING_KEY);
     lsDel(VERIFIED_KEY);
@@ -385,7 +361,7 @@
     if (!p.email) { errEl.textContent = 'No email on file — contact your administrator.'; return; }
     if (input.trim() !== String(p.pin)) {
       p.attempts = (p.attempts || 0) + 1;
-      lsSet(PENDING_KEY, scriptstringify(p));
+      lsSet(PENDING_KEY, JSON.stringify(p));
       if (p.attempts >= MAX_ATTEMPTS) {
         lsDel(PENDING_KEY);
         errEl.textContent = 'Too many wrong codes. Login blocked — sign in again.';
@@ -396,7 +372,6 @@
       return;
     }
     lsSet(VERIFIED_KEY, JSON.stringify({ id: p.session.id, exp: Date.now() + VERIFIED_TTL_MS }));
-    // Restore the ORIGINAL sign-in record exactly as the CRM wrote it.
     lsSet(p.sessionKey || SESSION_KEY, JSON.stringify(p.sessionRaw || p.session));
     lsDel(PENDING_KEY);
     hideOverlay();
@@ -408,9 +383,6 @@
     }
   }
 
-  function scriptstringify(v) { return JSON.stringify(v); }
-
-  // ---- watcher ----
   var lastSuperadminId = null;
   function tick() {
     var found = rawSession();
