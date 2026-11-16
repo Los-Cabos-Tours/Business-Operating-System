@@ -21,9 +21,10 @@
   <script src="js/boot-sync.js"></script>
   <!-- TWO-FACTOR AUTH (owner order 2026-11-16): after username/password,
        every non-superadmin account must enter a fresh 6-digit PIN emailed
-       to their address on file. Superadmin signs in at any time, no PIN.
-       ?v=1.1 cache-busts so browsers always fetch the current version. -->
-  <script src="js/two-factor.js?v=1.1"></script>
+       to their address on file. PIN expires after 2 minutes. Three wrong
+       attempts block the login. Superadmin signs in at any time, no PIN.
+       ?v=1.2 cache-busts so browsers always fetch the current rules. -->
+  <script src="js/two-factor.js?v=1.2"></script>
   <iframe id="bos-frame" src="crm.html" title="Aetherion"></iframe>
   <script>
     (function () {
@@ -51,7 +52,7 @@
           var overlay = doc.getElementById('login-overlay');
           var overlayVisible = !!(overlay && overlay.offsetParent !== null);
           if (overlayVisible) return; // not logged in yet
-          var li = document.createElement('li');
+          var li = doc.createElement('li');
           li.className = 'menu-item';
           li.id = 'nav-slf';
           var a = doc.createElement('a');
@@ -59,10 +60,10 @@
           a.target = '_blank';
           var icon = doc.createElement('i');
           icon.className = 'ti ti-school';
-          var div = document.createElement('div');
+          var div = doc.createElement('div');
           var span = doc.createElement('span');
           span.textContent = 'Student Loans';
-          var sub = document.createElement('div');
+          var sub = doc.createElement('div');
           sub.className = 'nav-sub';
           sub.textContent = 'Student loan CRM';
           div.appendChild(span);
