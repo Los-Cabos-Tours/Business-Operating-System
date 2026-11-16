@@ -4,12 +4,13 @@
 // leaving the client profile. Clicking the tab opens the search
 // workspace IN the tab body (not a popup) and the cursor goes
 // straight into the typing box.
-// v2: the tab label is a REAL inline-SVG magnifying glass, not
+// v3: the tab label is a REAL inline-SVG magnifying glass, not
 // an emoji — the emoji glyph rendered invisibly on some machines
 // (owner reported the tab could not be seen). SVG renders on
-// every platform. Clicking it shows the search input inline in
-// the tab workspace; type and results appear live, all without
-// leaving the client record.
+// every platform. Because the stock strip renderer escapes tab
+// names (which would print the SVG as literal text), this module
+// wraps tabNavHtml to render the raw icon for the search tab
+// ONLY; every other tab keeps its escaped plain-text name.
 //
 // Also per owner order: the duplicate Budget strip button is
 // REMOVED (the Budget Analysis action in the action bar opens
@@ -25,14 +26,27 @@
   }
 
   // ---- 2. Add the Search tab (inline-SVG magnifying glass) ----
-  // name is the icon markup; the strip renders it as-is. An
-  // accessible aria-label keeps it usable for screen readers.
+  var ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-label="Search" style="vertical-align:middle;"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>';
   SLFBoard.TABS.push({
     id: 'search',
-    name: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-label="Search" style="vertical-align:middle;"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>',
+    name: ICON,
     note: 'Search this contact\'s records without leaving the profile.',
     raw: true
   });
+
+  // ---- 2b. Strip renderer wrap: raw icon for the search tab ----
+  // The stock tabNavHtml escapes every name (esc(t.name)), which
+  // would print the SVG as literal text. This wrap outputs the
+  // raw markup for tabs flagged raw:true (only the search tab is)
+  // and keeps the escaped plain name for every other tab.
+  var origTabNav = SLFBoard.panel.tabNavHtml;
+  SLFBoard.panel.tabNavHtml = function () {
+    var cur = SLFBoard.state().tab;
+    return SLFBoard.TABS.map(function (t) {
+      var label = t.raw ? t.name : SLFBoard.esc(t.name);
+      return '<button class="btab' + (cur === t.id ? ' active' : '') + '" onclick="SLFBoard.setTab(\'' + t.id + '\')">' + label + '</button>';
+    }).join('');
+  };
 
   var SEARCHABLE = ['history', 'calls', 'emails', 'notes', 'emarketing', 'sms', 'docs', 'events', 'tasks', 'alerts', 'cards', 'bank', 'debts', 'loans', 'lenders', 'servicing', 'budget'];
 
@@ -60,7 +74,7 @@
         var text = (r && typeof r === 'object') ? JSON.stringify(r) : String(r);
         if (text.toLowerCase().indexOf(q) !== -1) {
           var tabName = '';
-          SLFBoard.TABS.forEach(function (t) { if (t.id === tabId) tabName = t.name; });
+          SLFBoard.TABS.forEach(function (t) { if (t.id === tabId) tabName = t.raw ? 'Search' : t.name; });
           if (!tabName) {
             if (tabId === 'budget') tabName = 'Budget';
           }
