@@ -1,14 +1,14 @@
 // ============================================================
 // SLF Custom Fields — Zoho-style field designer for the SLF CRM
 // Self-contained (mirrors the slf-sync.js injection pattern):
-//  - Adds a "Custom Fields" nav view (the field designer).
+//  - Adds a "Custom Fields" nav view with its own click binding
+//    (SLF.bindNav only binds buttons that exist at init time).
 //  - Injects custom inputs into the existing client/case modals
 //    by wrapping SLF methods at runtime — slf-app.js is untouched.
-//  - Custom values are stored INSIDE each record (record.custom),
-//    so existing backup/sync carry them automatically. Field
-//    definitions and e-sign data are added to backups via a
-//    superset bundle (format stays 'slf-backup', old files still
-//    import fine).
+//  - Custom values live INSIDE each record (record.custom), so
+//    existing sync carries them automatically. Field definitions
+//    and e-sign data ride in backups via a superset bundle
+//    (format stays 'slf-backup'; old files still import fine).
 // Definitions key: slf_crm.fielddefs.v1
 // ============================================================
 'use strict';
@@ -172,6 +172,7 @@ var SLFFields = (function () {
     if (SLF.view !== 'clients' && SLF.view !== 'cases') return;
     var entity = SLF.view === 'clients' ? 'client' : 'case';
     var fs = list(entity);
+    if (!fs.length) return;
     var t = document.querySelector('#view table');
     if (!t) return;
     var head = t.querySelector('thead tr');
@@ -219,6 +220,13 @@ var SLFFields = (function () {
       var b = document.createElement('button');
       b.setAttribute('data-view', 'fields');
       b.textContent = 'Custom Fields';
+      b.addEventListener('click', function () {
+        var all = document.querySelectorAll('#nav button');
+        Array.prototype.forEach.call(all, function (x) { x.classList.remove('active'); });
+        b.classList.add('active');
+        SLF.view = 'fields';
+        SLF.render();
+      });
       nav.appendChild(b);
     }
     ensureContainers();
