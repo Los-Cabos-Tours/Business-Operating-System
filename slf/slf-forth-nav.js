@@ -3,11 +3,11 @@
 // this file loads BEFORE slf-board-main.js (which creates
 // SLFBoard.render), so it silently bailed on every load and the
 // action bar never rendered. v2 drops that broken guard and
-// binds the panel hooks when the DOM is ready, after ALL modules
+// binds the panel hooks on DOMContentLoaded, after ALL modules
 // have loaded and the panel exists.
-// Owner-approved placement (per spec §3): Contact Search, Edit
+// Owner-approved placement (spec §3): Contact Search, Edit
 // Contact, Clone, Create Order, Budget Analysis, Creditors,
-// Enrollment, Settlements, Add Alert — the 9 actions — plus the
+// Enrollment, Settlements, Add Alert — all 9 actions — plus the
 // Favorites selector. #34's Update Status block is untouched.
 'use strict';
 (function () {
@@ -26,7 +26,7 @@
         item('Clone', 'clone') +
         item('Create Order', 'order') +
         item('Budget Analysis', 'budget') +
-        item('Creditor', 'creditors') +
+        item('Creditors', 'creditors') +
         item('Enrollment', 'enrollment') +
         item('Settlements', 'settlements') +
         '<span class="fnavi" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLFBoard.setTab(\'alerts\');setTimeout(function(){var f=document.getElementById(\'q-aname\');if(f)f.focus();},60)">Add Alert</span>' +
@@ -52,12 +52,12 @@
               if (!src) return;
               document.getElementById('c-name').value = (src.name || '') + ' (Copy)';
               document.getElementById('c-email').value = src.email || '';
-              document.getElementById('c-phones').value = src.phone || '';
+              document.getElementById('c-phone').value = src.phone || '';
               document.getElementById('c-notes').value = src.notes || '';
             }, 50);
           }
           break;
- case 'budget':
+        case 'budget':
           SLFBoard.setTab('budget');
           break;
         case 'creditors':
@@ -77,7 +77,7 @@
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLloaded', bindActionBar);
+    document.addEventListener('DOMContentLoaded', bindActionBar);
   } else {
     bindActionBar();
   }
