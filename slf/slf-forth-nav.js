@@ -1,14 +1,16 @@
-// Forth clone — top navigation bar module v5.
-// Owner correction (this session): clicking the magnifying glass
-// must produce ZERO change on screen — not even the search box
-// appearing counts as "no change". v4 toggled the box's display,
-// which visibly altered the bar the moment you clicked. v5 keeps
-// the search input ALWAYS IN THE BAR (identical pixels before and
-// after the click) — clicking the glass does exactly one thing:
-// focuses the cursor in that box so the user starts typing.
-// No toggle. Nothing appears. Nothing moves. The current tab and
-// the whole workspace are untouched.
-// Everything else identical to v4 (8 labeled actions, #34's
+// Forth clone — top navigation bar module v6.
+// Owner correction (this session): there must be ONE search
+// item in the bar — the magnifying glass alone. v5 showed the
+// glass AND a permanently visible search box next to it, which
+// the owner rejected as two of the same thing. v6 removes the
+// visible box from the bar entirely. Clicking the glass reveals
+// the search field as a FLOATING OVERLAY directly under the
+// glass (absolute-positioned inside the bar's positioned
+// wrapper), so nothing in the bar moves, wraps, or changes —
+// and the cursor lands in the field immediately. Esc or clicking
+// the glass again hides it. The current tab and workspace are
+// never touched.
+// Everything else identical to v5 (8 labeled actions, #34's
 // Update Status block untouched).
 'use strict';
 (function () {
@@ -23,9 +25,12 @@
       function item(label, action) {
         return '<span class="fnavi" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLFBoard.navAction(\'' + action + '\')">' + label + '</span>';
       }
-      return '<div class="fnav" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 12px 0;padding:8px 12px;background:rgba(15,32,64,0.35);border:1px solid var(--line);border-radius:10px;">' +
-        '<span class="fnavi" title="Search this contact\'s records" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLFBoard.focusSearch()">' + GLASS + '</span>' +
-        '<input id="fnav-search-input" placeholder="Search this contact\'s records…" style="display:inline-block;width:220px;max-width:220px;padding:4px 8px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);background:rgba(10,22,40,0.6);color:var(--text);font-family:inherit;" oninput="SLFBoard.runContactSearch(this.value)" />' +
+      // Bar wrapper is position:relative so the search overlay
+      // anchors to it. The overlay is absolute — it never
+      // participates in the flex layout, so revealing it cannot
+      // shift any action item.
+      return '<div class="fnav" style="position:relative;display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 12px 0;padding:8px 12px;background:rgba(15,32,64,0.35);border:1px solid var(--line);border-radius:10px;">' +
+        '<span class="fnavi" title="Search this contact\'s records" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLFBoard.toggleSearch()">' + GLASS + '</span>' +
         item('Edit Contact', 'edit') +
         item('Clone', 'clone') +
         item('Create Order', 'order') +
@@ -38,8 +43,11 @@
         '<span style="color:var(--muted);font-size:11px;">Favorites</span>' +
         '<select id="fav-select" style="width:auto;max-width:150px;padding:4px 8px;font-size:11px;background:rgba(10,22,40,0.6);border:1px solid var(--line);border-radius:6px;color:var(--text);">' +
         '<option value="">— select —</option></select></span>' +
-        '</div>' +
-        '<div id="fnav-search-results" style="display:none;margin:0 0 12px 0;padding:8px 12px;background:rgba(15,32,64,0.35);border:1px solid var(--line);border-radius:10px;max-height:220px;overflow:auto;"></div>';
+        // Floating search overlay — hidden until the glass is
+        // clicked; absolute, so zero reflow.
+        '<input id="fnav-search-input" placeholder="Search this contact\'s records…" style="display:none;position:absolute;top:calc(100% + 6px);left:12px;z-index:30;width:260px;max-width:260px;padding:7px 10px;font-size:12px;border-radius:8px;border:1px solid var(--line);background:#0E1F3C;color:var(--text);font-family:inherit;box-shadow:0 6px 18px rgba(4,10,20,0.5);" oninput="SLFBoard.runContactSearch(this.value)" onkeydown="if(event.key===\'Escape\'){SLFBoard.toggleSearch();}" />' +
+        '<div id="fnav-search-results" style="display:none;position:absolute;top:calc(100% + 42px);left:12px;z-index:29;width:420px;max-width:calc(100% - 24px);padding:8px 12px;background:#0E1F3C;border:1px solid var(--line);border-radius:10px;max-height:220px;overflow:auto;box-shadow:0 6px 18px rgba(4,10,20,0.5);"></div>' +
+        '</div>';
     };
 
     SLFBoard.navAction = function (a) {
