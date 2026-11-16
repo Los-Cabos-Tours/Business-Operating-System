@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device=device-width, initial-scale=1" />
 <title>SLF CRM — Student Loan Forgiveness</title>
 <style>
 :root { --navy:#0A1628; --panel:rgba(15,32,64,0.45); --gold:#C9A84C; --text:#F0EAD6; --muted:rgba(240,234,214,0.6); --line:rgba(201,168,76,0.2); --green:#6BCB77; --red:#D4581A; }
@@ -124,6 +124,11 @@ a.back:hover { color:var(--gold); }
   </div>
 </div>
 
+<!-- Boot sync: pulls ALL shared data (main BOS + Student Loans) from the
+     configured sync backend before this app renders, so every device
+     shows the same information. Auto-enables SLF data sync (owner order:
+     one shared backend, all data shared with all users). -->
+<script src="../js/boot-sync.js"></script>
 <script src="../js/settings.js"></script>
 <script src="slf-guard.js?v=3.15"></script>
 </body>
