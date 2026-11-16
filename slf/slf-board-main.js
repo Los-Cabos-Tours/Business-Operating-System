@@ -1,4 +1,4 @@
-// SLF Board main controller (split 5/5) v4
+// SLF Board main controller (split 5/5) v5
 'use strict';
 (function () {
   function displayLine(tab, r) {
@@ -14,7 +14,8 @@
       debts: (r.creditor || '') + (r.amount ? ' — $' + r.amount : ''),
       events: (r.eventTitle || '') + (r.eventDate ? ' — ' + r.eventDate : ''),
       sms: (r.phone || '') + (r.message ? ' — ' + r.message : ''),
-      emarketing: (r.campaign || '') + (r.channel ? ' — ' + r.channel : '')
+      emarketing: (r.campaign || '') + (r.channel ? ' — ' + r.channel : ''),
+      servicing: (r.servicer || '') + (r.action ? ' — ' + r.action : '') + (r.date ? ' — ' + r.date : '') + (r.notes ? ' — ' + r.notes : '')
     };
     return m[tab] || '';
   }
@@ -35,10 +36,13 @@
       return;
     }
     document.getElementById('view-title').textContent = 'Client Dashboard';
-    var stageSelect = SLFBoard.panel.stageSelectHtml ? SLFBoard.panel.stageSelectHtml(c) : '';
+    var stageOptions = '';
+    if (SLFBoard.panel.stageOptionsHtml) {
+      stageOptions = SLFBoard.panel.stageOptionsHtml(c);
+    }
     v.innerHTML =
       '<style>' + SLFBoard.css() + '</style>' +
-      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">' +
       '<span class="bbkname">' + SLFBoard.esc(c.name) + '</span>' +
       '<span class="btagid">' + SLFBoard.esc(c.id) + '</span>' +
       '<span style="flex:1;"></span>' +
@@ -46,7 +50,14 @@
       '<button class="bact ghost" onclick="SLFBoard.exportClient()">Export</button>' +
       '<button class="bact danger" onclick="SLFBoard.deleteConfirm()">Delete</button>' +
       '</div>' +
-      (stageSelect ? '<div class="frow" style="margin:0 0 14px 0;">' + stageSelect + '</div>' : '') +
+      // Update Status: label + dropdown together, LEFT-aligned,
+      // directly under the client name/ID row. Inline flex with
+      // gap only - no flex:1 label - so the row hugs the left and
+      // the dropdown sits next to its label, never pushed right.
+      (stageOptions ? '<div style="display:inline-flex;align-items:center;gap:8px;margin:0 0 14px 0;">' +
+        '<span style="color:var(--muted);font-size:12.5px;">Update Status</span>' +
+        '<select id="f-stage" style="background:rgba(10,22,40,0.6);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:5px 8px;font-size:12px;font-family:inherit;max-width:220px;" onchange="SLFBoard.updateStage(this.value)">' + stageOptions + '</select>' +
+        '</div>' : '') +
       '<div class="bwrap">' +
       '<div class="bleft">' + SLFBoard.panel.infoPanel(c) + '</div>' +
       '<div class="bright">' +

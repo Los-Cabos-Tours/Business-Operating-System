@@ -1,24 +1,23 @@
-// Forth panel bridge v7: the Update Status dropdown now lives
-// in the client header, directly under the client name / ID
-// badge row (rendered by slf-board-main.js). The left panel
-// carries ONLY the profile fields - no workflow rows at all.
+// Forth panel bridge v8: Update Status lives in the client header
+// (rendered by slf-board-main.js) as a left-aligned
+// "Update Status [dropdown]" row directly under the name/ID row.
+// This module only builds the <option> list for that dropdown.
+// The left panel carries ONLY the profile fields - no rows.
 'use strict';
 
-// Builds the Update Status dropdown HTML (used by the header).
-SLFBoard.panel.stageSelectHtml = function (c) {
+// Builds just the <option> elements for the header dropdown.
+SLFBoard.panel.stageOptionsHtml = function (c) {
   var esc = SLFBoard.esc;
   var cases = window.SLF ? SLF.cases.filter(function (k) { return k.clientId === c.id; }) : [];
   var stages = window.SLF ? SLF.stages() : [];
   var current = cases.length ? cases[0].stage : '';
-  var stageOptions = stages.map(function (s) {
+  return stages.map(function (s) {
     return '<option value="' + esc(s.id) + '"' + (s.id === current ? ' selected' : '') + '>' + esc(s.name) + '</option>';
   }).join('');
-  return '<span class="flab">Update Status</span>' +
-    '<select id="f-stage" onchange="SLFBoard.updateStage(this.value)">' + stageOptions + '</select>';
 };
 
 // Left panel: profile fields only (rendered by slf-forth-main.js).
-// forthPanel is now an empty string so no workflow rows appear.
+// forthPanel is an empty string so no workflow rows appear.
 SLFBoard.panel.forthPanel = function (c) { return ''; };
 
 SLFBoard.updateStage = function (stageId) {
