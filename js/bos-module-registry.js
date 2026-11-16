@@ -1,21 +1,17 @@
-/* ============================================================
-   Aetherion BOS — Module Registry (Phase 1, lifecycle-corrected)
-   ES5-compatible. No storage access. No dependencies.
-   Lifecycle rules (mandatory correction):
-   1. A new module never mounts until the previous module is
+/* Aetherion BOS - Module Registry (Phase 1)
+   ES5. No storage or network access. Lifecycle contract:
+   1. A new module mounts only after the previous module is
       unmounted AND its container is verified empty.
-   2. onUnmount() errors are captured and reported but never
-      block a switch whose cleanup succeeds. Cleanup failure
-      aborts the new mount and leaves the registry inactive.
-   3. render()/onMount() failures preserve the original error,
+   2. onUnmount errors are reported; cleanup is still attempted;
+      cleanup failure aborts the new mount and leaves the
+      registry inactive.
+   3. render/onMount failures preserve the original error,
       attempt cleanup, report cleanup errors independently,
       and never mark the module active.
-   4. A successful mount requires BOTH render() and onMount().
-   5. Repeat mounts are no-ops only for identical module ID,
+   4. A successful mount requires both render and onMount.
+   5. Repeat mounts are no-ops only for identical module id,
       container reference, and context reference.
-   6. A new context object is a new mount request, even if its
-      properties contain identical values.
-   ============================================================ */
+   6. A new context object is a new mount request. */
 (function (global) {
   'use strict';
 
@@ -27,13 +23,14 @@
 
   function reportError(phase, err) {
     if (global.console && typeof global.console.error === 'function') {
-      global.console.error('[BOSModules] ' + phase + ':', err && err.message ? err.message : err);
+      global.console.error('[BOSModules] ' + phase + ':',
+        err && err.message ? err.message : err);
     }
   }
 
   function copyArray(arr) {
-    var copy = [], i, len = arr.length;
-    for (i = 0; i < len; i++) copy[i] = arr[i];
+    var copy = [], i;
+    for (i = 0; i < arr.length; i++) copy[i] = arr[i];
     return copy;
   }
 
@@ -52,10 +49,6 @@
     });
   }
 
-  function isEmpty(container) {
-    return !container || !container.firstChild;
-  }
-
   function stripChildren(container) {
     while (container && container.firstChild) {
       try {
@@ -70,14 +63,13 @@
   function verifyEmpty(container, phase) {
     var clearError = null;
     try {
-      stripChildren(container);
+      if (!stripChildren(container)) clearError = new Error('removeChild failed');
     } catch (e) {
       clearError = e;
     }
     if (clearError) reportError(phase + ' clear attempt', clearError);
-    if (!isEmpty(container)) {
-      reportError(phase + ' container could not be verified empty',
-        new Error('cleanup incomplete'));
+    if (!container || container.firstChild) {
+      reportError(phase + ' cleanup incomplete', new Error('container not empty'));
       return false;
     }
     return true;
@@ -102,13 +94,6 @@
     if (typeof module.onUnmount !== 'undefined' && typeof module.onUnmount !== 'function') {
       throw new TypeError('onUnmount must be a function.');
     }
-  }
-
-  function register(module) {
-    validateModule(module);
-    if (Object.prototype.hasOwnProperty.call(registry, module.id)) {
-      throw new Error('Module already registered: ' + module.id);
-    }
     if (module.permissions !== undefined && !Array.isArray(module.permissions)) {
       throw new TypeError('Module permissions must be an array.');
     }
@@ -118,6 +103,13 @@
           throw new TypeError('Module permission entries must be nonempty strings.');
         }
       }
+    }
+  }
+
+  function register(module) {
+    validateModule(module);
+    if (Object.prototype.hasOwnProperty.call(registry, module.id)) {
+      throw new Error('Module already registered: ' + module.id);
     }
     registry[module.id] = {
       id: module.id,
@@ -192,23 +184,14 @@
       var prevContainer = activeContainer;
       var prevContext = activeContext;
       activeModuleId = null;
-      active registry = null;
       activeContainer = null;
       activeContext = null;
       activeContextRaw = null;
-
       if (prevDef && prevDef.onUnmount) {
         try {
-          def.onUnmount(prevContainer, prevContext);
+          prevDef.onUnmount(prevContainer, prevContext);
         } catch (e) {
           reportError('onUnmount (previous module)', e);
-        }
-        if (prevDef && prevDef.onUnmount) {
-          try {
-            prevDef.onUnmount(prevContainer, prevContext);
-          } catch (e) {
-            reportError('onUnmount (previous module)', e);
-          }
         }
       }
       if (!verifyEmpty(prevContainer, 'previous module cleanup')) {
@@ -253,9 +236,9 @@
   global.BOSModules = {
     register: register,
     get: get,
-    0: mount,
+    list: list,
+    mount: mount,
     unmount: unmount,
-    getActiveModuleId: getActiveModuleId,
-    mount: mount
+    getActiveModuleId: getActiveModuleId
   };
-})(typeof window !== `window`)
+})(typeof window !== 'undefined' ? window : this);
