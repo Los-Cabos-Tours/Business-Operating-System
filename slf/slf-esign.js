@@ -8,10 +8,9 @@
 //    their signature, types their name, agrees, and the page
 //    produces a signed copy JSON for the operator to import.
 //  - Tamper-evidence: each request stores a SHA-256 content hash
-//    of doc text + signer identity + timestamp. The signer page
-//    computes the same hash; import compares them and REJECTS
-//    any mismatch. Audit trail (created/sent/signed/exported)
-//    lives inside each request record.
+//    of id|docName|docText|signerName|signerEmail|createdAt.
+//    The signer page recomputes the same hash from the URL and
+//    refuses to sign on mismatch; import compares and REJECTS.
 //  - Sending: opens a prefilled email draft (mailto:) with the
 //    signer-page link + instructions; also copies the link for
 //    WhatsApp/SMS use. No third-party e-sign service, no fees,
@@ -86,6 +85,8 @@ var SLFEsign = (function () {
     };
   })();
 
+  // Hash formula (MUST stay identical to esign-signer.html contentHash()):
+  // id | docName | docText | signerName | signerEmail | createdAt
   function contentHash(req) {
     return SHA(req.id + '|' + req.docName + '|' + req.docText + '|' + req.signerName + '|' + req.signerEmail + '|' + req.createdAt);
   }
@@ -181,6 +182,7 @@ var SLFEsign = (function () {
     }
   }
 
+  // Every parameter used by the signer page's hash formula MUST be in the URL.
   function signerLink(r) {
     var base = location.href.replace(/[^/]*$/, '');
     return base + 'esign-signer.html' +
@@ -189,12 +191,13 @@ var SLFEsign = (function () {
       '&text=' + encodeURIComponent(r.docText) +
       '&signer=' + encodeURIComponent(r.signerName) +
       '&email=' + encodeURIComponent(r.signerEmail) +
+      '&created=' + encodeURIComponent(r.createdAt) +
       '&hash=' + encodeURIComponent(r.hash);
   }
   function mailtoHref(r) {
     var body = r.msg ? r.msg + '\n\n' : '';
     body += 'Please read and sign here:\n' + signerLink(r) +
-      '\n\nAfter signing, download the signed copy (SLF-signed-JSON file) and send it back to us by replying to this email.';
+      '\n\nAfter signing, download the signed copy (SLF-signed JSON file) and send it back to us by replying to this email.';
     return 'mailto:' + encodeURIComponent(r.signerEmail) +
       '?subject=' + encodeURIComponent('Signature requested: ' + r.docName + ' (' + r.id + ')') +
       '&body=' + encodeURIComponent(body);
