@@ -1,5 +1,5 @@
 'use strict';
-/* Registry tests - Node built-in runner: node --test tests/
+/* Registry tests - Node built-in runner: node --test tests/*.test.js
    Synthetic data only. Does NOT load crm.html. */
 
 const test = require('node:test');
@@ -84,16 +84,16 @@ test('5. list() returns metadata', () => {
   assert.strictEqual(entry.version, '1.0.0');
 });
 
-test('6. defensive copies: mutating get()/list() results does not change registry', () => {
+test('6. defensive copies: mutating get()/list() results is blocked by frozen metadata', () => {
   const m = validModule();
   BOS.register(m);
   const copy = BOS.get(m.id);
-  copy.name = 'HACKED';
-  copy.permissions.push('evil');
+  assert.throws(() => { copy.name = 'HACKED'; }, TypeError);
+  assert.throws(() => { copy.permissions.push('evil'); }, TypeError);
   assert.strictEqual(BOS.get(m.id).name, m.name);
   assert.strictEqual(BOS.get(m.id).permissions.length, 1);
   const listed = BOS.list().find((x) => x.id === m.id);
-  listed.navLabel = 'HACKED';
+  assert.throws(() => { listed.navLabel = 'HACKED'; }, TypeError);
   assert.strictEqual(BOS.get(m.id).navLabel, m.navLabel);
 });
 
@@ -279,13 +279,13 @@ test('21. one module's returned metadata cannot modify another module', () => {
   const a = validModule(); const b = validModule();
   BOS.register(a); BOS.register(b);
   const meta = BOS.get(a.id);
-  meta.name = b.name;
-  meta.id = b.id;
+  assert.throws(() => { meta.name = b.name; }, TypeError);
+  assert.throws(() => { meta.id = b.id; }, TypeError);
   assert.strictEqual(BOS.get(b.id).name, b.name);
   assert.strictEqual(BOS.get(a.id).name, a.name);
 });
 
-test('22. demo module (module-test) registers and renders display-only content', () => {
+test('22. demo-style module registers and renders display-only content', () => {
   const demo = validModule({
     id: 'module-test-check',
     render: function (container) {
