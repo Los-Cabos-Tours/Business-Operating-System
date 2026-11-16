@@ -26,6 +26,10 @@
        on every device (owner order: one shared backend, all data
        shared with all users). -->
   <script src="js/boot-sync.js"></script>
+  <!-- Two-factor auth: after username/password, every non-superadmin
+       account must enter a fresh 6-digit PIN emailed to their address
+       on file. Superadmin signs in at any time without a PIN. -->
+  <script src="js/two-factor.js"></script>
   <iframe id="bos-frame" src="crm.html" title="Aetherion"></iframe>
   <script>
     (function () {
@@ -66,10 +70,10 @@
           a.target = '_blank';
           var icon = doc.createElement('i');
           icon.className = 'ti ti-school';
-          var div = doc.createElement('div');
-          var span = doc.createElement('span');
+          var div = document.createElement('div');
+          var span = document.createElement('span');
           span.textContent = 'Student Loans';
-          var sub = doc.createElement('div');
+          var sub = document.createElement('div');
           sub.className = 'nav-sub';
           sub.textContent = 'Student loan CRM';
           div.appendChild(span);
