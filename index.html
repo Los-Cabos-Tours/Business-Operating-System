@@ -14,8 +14,6 @@
     (function () {
       var frame = document.getElementById('bos-frame');
 
-      // Branding patch — ONLY "Los Cabos Tours" becomes "BOS".
-      // Aetherion remains the platform brand name.
       function patchDoc(doc) {
         try {
           if (doc.title.indexOf('Los Cabos Tours') !== -1) {
@@ -30,15 +28,50 @@
         } catch (e) { /* frame not ready */ }
       }
 
+      function addSlfTab(doc) {
+        try {
+          if (doc.getElementById('nav-slf')) return;
+          var menu = doc.querySelector('.sidebar-menu');
+          if (!menu) return;
+          var role = doc.querySelector('.user-role');
+          if (!role || role.textContent.indexOf('Super Admin') === -1) return;
+          var li = doc.createElement('li');
+          li.className = 'menu-item';
+          li.id = 'nav-slf';
+          var a = doc.createElement('a');
+          a.href = 'slf/index.html';
+          a.target = '_blank';
+          var icon = doc.createElement('i');
+          icon.className = 'ti ti-school';
+          var div = doc.createElement('div');
+          var span = doc.createElement('span');
+          span.textContent = 'Student Loans';
+          var sub = doc.createElement('div');
+          sub.className = 'nav-sub';
+          sub.textContent = 'Student loan CRM';
+          div.appendChild(span);
+          div.appendChild(sub);
+          a.appendChild(icon);
+          a.appendChild(div);
+          li.appendChild(a);
+          menu.appendChild(li);
+        } catch (e) { /* frame not ready */ }
+      }
+
       function start() {
         var doc = null;
         try { doc = frame.contentDocument; } catch (e) { return; }
         if (!doc || !doc.documentElement) return;
         patchDoc(doc);
+        addSlfTab(doc);
         var overlay = doc.getElementById('login-overlay');
         if (overlay && window.MutationObserver) {
-          new MutationObserver(function () { patchDoc(doc); })
+          new MutationObserver(function () { patchDoc(doc); addSlfTab(doc); })
             .observe(overlay, { childList: true, subtree: true });
+        }
+        if (doc.body && window.MutationObserver) {
+          new MutationObserver(function () { addSlfTab(doc); })
+            .observe(doc.body, { childList: true, subtree: true });
         }
       }
 
