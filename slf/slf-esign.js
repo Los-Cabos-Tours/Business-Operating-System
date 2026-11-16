@@ -37,7 +37,7 @@ var SLFEsign = (function () {
   }
   function find(id) { return requests().filter(function (r) { return r.id === id; })[0] || null; }
 
-  // ---------- tiny SHA-256 (pure JS, no crypto.subtle dependency for file:// use) ----------
+  // ---------- tiny SHA-256 (pure JS; same implementation runs in the signer page) ----------
   var SHA = (function () {
     function rotr(n, x) { return (x >>> n) | (x << (32 - n)); }
     return function (str) {
@@ -54,24 +54,24 @@ var SLFEsign = (function () {
         0xadfa7c67, 0xf7684a2b, 0x2fd6b0e7, 0xa9b9c53e, 0x8f6a6f28, 0x6bfbf774, 0x2fb6de38, 0xf40d86d1];
       var l = utf8.length;
       var withOne = ((l + 8) >> 6) + 1;
-      var blocks = new Array(withOne).fill(0);
       var words = new Array(withOne * 16).fill(0);
       for (var i = 0; i < l; i++) words[i >> 2] |= (utf8.charCodeAt(i) & 0xff) << (24 - (i % 4) * 8);
       words[l >> 2] |= 0x80 << (24 - (l % 4) * 8);
       words[withOne * 16 - 1] = l * 8;
       for (var j = 0; j < withOne; j++) {
         var w = new Array(64);
-        for (var t = 0; t < 16; t++) w[t] = words[j * 16 + t];
-        for (var t2 = 16; t2 < 64; t2++) {
-          var s0 = rotr(7, w[t2 - 15]) ^ rotr(18, w[t2 - 15]) ^ (w[t2 - 15] >>> 3);
-          var s1 = rotr(17, w[t2 - 2]) ^ rotr(19, w[t2 - 2]) ^ (w[t2 - 2] >>> 10);
-          w[t2] = (w[t2 - 16] + s0 + w[t2 - 7] + s1) | 0;
+        var t;
+        for (t = 0; t < 16; t++) w[t] = words[j * 16 + t];
+        for (t = 16; t < 64; t++) {
+          var s0 = rotr(7, w[t - 15]) ^ rotr(18, w[t - 15]) ^ (w[t - 15] >>> 3);
+          var s1 = rotr(17, w[t - 2]) ^ rotr(19, w[t - 2]) ^ (w[t - 2] >>> 10);
+          w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;
         }
         var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
-        for (var t3 = 0; t3 < 64; t3++) {
+        for (var t2 = 0; t2 < 64; t2++) {
           var S1 = rotr(6, e) ^ rotr(11, e) ^ rotr(25, e);
           var ch = (e & f) ^ (~e & g);
-          var temp1 = (h + S1 + ch + K[t3] + w[t3]) | 0;
+          var temp1 = (h + S1 + ch + K[t2] + w[t2]) | 0;
           var S0 = rotr(2, a) ^ rotr(13, a) ^ rotr(22, a);
           var maj = (a & b) ^ (a & c) ^ (b & c);
           var temp2 = (S0 + maj) | 0;
@@ -81,9 +81,7 @@ var SLFEsign = (function () {
         H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
       }
       var out = '';
-      for (var m = 0; m < 8; m++) {
-        out += ('00000000' + ((H[m] >>> 0).toString(16))).slice(-8);
-      }
+      for (var m = 0; m < 8; m++) out += ('00000000' + ((H[m] >>> 0).toString(16))).slice(-8);
       return out;
     };
   })();
@@ -120,13 +118,13 @@ var SLFEsign = (function () {
       '<div><label class="fl">Document name *</label><input id="es-doc" placeholder="Power of Attorney" /></div>' +
       '<div class="full"><label class="fl">Document text — full agreement the signer will see and sign *</label>' +
       '<textarea id="es-text" rows="5" placeholder="Paste the full legal text of the document here. The signer reads exactly this text before signing."></textarea></div>' +
-      '<div><label class="Se fl">Signer name *</label><input id="es-signer" placeholder="Jane Doe" /></div>' +
+      '<div><label class="fl">Signer name *</label><input id="es-signer" placeholder="Jane Doe" /></div>' +
       '<div><label class="fl">Signer email *</label><input id="es-email" type="email" placeholder="jane@email.com" /></div>' +
       '<div class="full"><label class="fl">Message to signer (optional)</label><input id="es-msg" placeholder="Please review and sign. Thank you!" /></div>' +
       '</div><div class="modal-actions" style="justify-content:flex-start;">' +
       '<button class="btn" onclick="SLFEsign.createRequest()">Create Signing Request</button></div></div>' +
       '<div class="card"><h3>Signature Requests</h3>' +
-      (rs.length ? '<table><thead><tr><th>ID</th><th>Document</th><Signer</th><th>Case</th><th>Status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>'
+      (rs.length ? '<table><thead><tr><th>ID</th><th>Document</th><th>Signer</th><th>Case</th><th>Status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>'
         : '<div class="empty">No signing requests yet. Create one above — pick a case, paste the document, name the signer.</div>') +
       '</div>';
   }
@@ -168,7 +166,7 @@ var SLFEsign = (function () {
       '<p style="font-size:12px;color:var(--muted);">Request <strong>' + esc(r.id) + '</strong> · case ' + esc(r.caseId || '—') + ' · created ' + esc(r.createdAt) + '</p>' +
       '<div class="fgrid" style="margin-top:14px;">' +
       '<div class="full"><label class="fl">Signing link — send this to the signer</label><input id="es-link" readonly value="' + esc(link) + '" /></div>' +
-      '<div class="full"><label class="fl">Prefilled email draft (opens your mail app)</label>' +
+      '<div class="full"><label class="fl">Send it</label>' +
       '<a class="btn" style="text-decoration:none;" href="' + esc(mailtoHref(r)) + '">Open Email Draft</a> ' +
       '<button class="btn ghost" onclick="SLFEsign.copyLink()">Copy Link</button></div>' +
       '</div>' +
@@ -192,12 +190,11 @@ var SLFEsign = (function () {
       '&signer=' + encodeURIComponent(r.signerName) +
       '&email=' + encodeURIComponent(r.signerEmail) +
       '&hash=' + encodeURIComponent(r.hash);
-    }
+  }
   function mailtoHref(r) {
     var body = r.msg ? r.msg + '\n\n' : '';
     body += 'Please read and sign here:\n' + signerLink(r) +
-      '\n\nAfter signing, download the signed copy (SLF-signed-<id>.json) and send it back to us by replying to this email.';
-    body = body.replace('<id>', r.id);
+      '\n\nAfter signing, download the signed copy (SLF-signed-JSON file) and send it back to us by replying to this email.';
     return 'mailto:' + encodeURIComponent(r.signerEmail) +
       '?subject=' + encodeURIComponent('Signature requested: ' + r.docName + ' (' + r.id + ')') +
       '&body=' + encodeURIComponent(body);
@@ -232,7 +229,7 @@ var SLFEsign = (function () {
     var v = document.getElementById('view');
     if (!v) return;
     v.innerHTML = '<div class="card"><h3>Import Signed Copy — ' + esc(r.docName) + '</h3>' +
-      '<p style="font-size:12.5px;color:import-var;">Select the <code>SLF-signed-' + esc(r.id) + '.json</code> file the signer sent back. The document hash is verified against this request — any mismatch is rejected.</p>' +
+      '<p style="font-size:12.5px;color:var(--muted);">Select the <code>SLF-signed-' + esc(r.id) + '.json</code> file the signer sent back. The document hash is verified against this request — any mismatch is rejected.</p>' +
       '<input type="file" id="es-import-file" accept=".json,application/json" style="max-width:320px;" />' +
       '<button class="btn" style="margin-left:10px;" onclick="SLFEsign.importSigned(\'' + esc(r.id) + '\')">Verify &amp; Import</button>' +
       '<div id="es-import-status" style="font-size:12px;margin-top:10px;"></div></div>';
@@ -270,7 +267,6 @@ var SLFEsign = (function () {
       rec.signedAt = parsed.signedAt;
       rec.signatureData = parsed.signatureData;
       rec.typedName = parsed.typedName;
-      rec.signerIpHint = parsed.signerIpHint || '';
       rec.audit.push({ ts: new Date().toISOString(), action: 'signed copy imported' });
       if (!saveRequests(all)) return;
       SLF.log('esign-import', 'request ' + r.id, 'verified and imported — ' + r.docName);
@@ -296,7 +292,6 @@ var SLFEsign = (function () {
       origRender.apply(SLF, arguments);
       try {
         if (SLF.view === 'esign') {
-          document.getElementById('view-title').textCoent = 'Signatures';
           document.getElementById('view-title').textContent = 'Signatures';
           renderRequests();
         }
