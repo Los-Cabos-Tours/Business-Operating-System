@@ -1,22 +1,26 @@
 // ============================================================
-// SLF Board Keep-Open — ROOT fix for the ejection bug.
-// v1 (syncguard) tried to guess when sync data changed using
-// fingerprints. That had race windows. This module removes the
-// guessing entirely:
+// SLF Board Keep-Open v2 — the ejection fix that actually works.
+// v1's fatal flaw: it checked SLFBoard.state().clientId (memory)
+// to decide whether the board was still open. But a sync
+// re-render wipes the SCREEN without touching that memory - so
+// the check always said "board still intact, nothing to restore"
+// while the user was staring at the Clients table. The guard
+// never fired once. v1 also hooked SLF.render, which would have
+// trapped the user inside the profile even when they clicked
+// Dashboard themselves.
 //
-//  RULE: while a Client Dashboard is open, ANY full re-render
-//  (from sync, from init, from anything) restores the SAME
-//  dashboard (same client, same tab) immediately after.
-//  No timing windows. No heuristics. The profile simply
-//  cannot be closed by anything other than the user.
-//
-// Load order: after slf-board-* modules, before hook.
+// v2 rules:
+//  1. Track the open client (open/close/setTab hooks - same as v1).
+//  2. Restore ONLY on sync-triggered full re-renders. Sync calls
+//     SLF.init() after each pull; user navigation never does.
+//  3. Decide by the DOM: if a board is open in memory but its
+//     content is NOT on screen, the screen was wiped - restore it.
+//  4. Everything in try/catch - the guard must never break sync.
 // ============================================================
 'use strict';
 (function () {
   if (!window.SLFBoard || !window.SLF) return;
 
-  // current open board: clientId + tab, tracked continuously
   var _open = { clientId: null, tab: 'history' };
 
   var origOpen = SLFBoard.open;
@@ -38,38 +42,38 @@
     return origSetTab.apply(SLFBoard, arguments);
   };
 
-  // The protection: after any full re-render, if a board was
-  // open, put the SAME dashboard back - same client, same tab.
-  function protectRender() {
-    if (!_open.clientId) return;
+  // Is the board's content actually on screen right now?
+  function boardOnScreen() {
     try {
-      if (SLFBoard.state().clientId === _open.clientId) return; // board still intact
-    } catch (e) { /* fall through to restore */ }
-    // capture the tab BEFORE opening (wrapped open resets it)
-    var wantedTab = _open.tab;
+      var v = document.getElementById('view');
+      if (!v) return false;
+      // The board always renders its own <style> block (SLFBoard.css)
+      // and its grid wrapper. If neither is in the live DOM, the
+      // screen no longer shows the board.
+      return !!(v.querySelector('.bwrap') || v.innerHTML.indexOf('Client Information') !== -1);
+    } catch (e) { return false; }
+  }
+
+  // Restore after a sync-triggered re-render if the board was open.
+  function protectAfterSyncRender() {
+    if (!_open.clientId) return;          // no board open - user is elsewhere
+    if (boardOnScreen()) return;         // board still on screen - done
     try {
+      var wantedTab = _open.tab;
       SLFBoard.open(_open.clientId);
       if (wantedTab && wantedTab !== 'history') SLFBoard.setTab(wantedTab);
     } catch (e) { /* restore must never throw */ }
   }
 
-  var current = SLF.render;
-  if (current && !current.__keepOpen) {
-    SLF.render = function () {
-      var result = current.apply(SLF, arguments);
-      try { protectRender(); } catch (e) {}
-      return result;
-    };
-    SLF.render.__keepOpen = true;
-  }
-
+  // Hook ONLY the sync path. SLFSync calls SLF.init() after each
+  // pull; user navigation uses SLF.render()/setView and never init.
   var currentInit = SLF.init;
-  if (currentInit && !currentInit.__keepOpen) {
+  if (currentInit && !currentInit.__keepOpenV2) {
     SLF.init = function () {
       var result = currentInit.apply(SLF, arguments);
-      try { protectRender(); } catch (e) {}
+      try { protectAfterSyncRender(); } catch (e) {}
       return result;
     };
-    SLF.init.__keepOpen = true;
+    SLF.init.__keepOpenV2 = true;
   }
 })();
