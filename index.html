@@ -23,9 +23,10 @@
        every non-superadmin account must enter a fresh 6-digit PIN emailed
        to their address on file. PIN expires after 2 minutes. Three wrong
        attempts block the login. Superadmin signs in at any time, no PIN.
-       v1.5: expired challenges auto-clear (frozen pending state fixed),
-       overlay rebuilds after reload. ?v=1.5 cache-busts. -->
-  <script src="js/two-factor.js?v=1.5"></script>
+       v1.6: overlay shows the EXACT backend URL the PIN was sent to (or
+       NOT SENT + reason); resend/verify/cancel give visible feedback.
+       ?v=1.6 cache-busts. -->
+  <script src="js/two-factor.js?v=1.6"></script>
   <iframe id="bos-frame" src="crm.html" title="Aetherion"></iframe>
   <script>
     (function () {
@@ -64,7 +65,7 @@
           var div = doc.createElement('div');
           var span = doc.createElement('span');
           span.textContent = 'Student Loans';
-          var sub = document.createElement('div');
+          var sub = doc.createElement('div');
           sub.className = 'nav-sub';
           sub.textContent = 'Student loan CRM';
           div.appendChild(span);

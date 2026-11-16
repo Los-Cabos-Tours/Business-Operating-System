@@ -1,30 +1,25 @@
 // ============================================================
-// BOS Two-Factor Authentication — email 6-digit PIN — v1.5
+// BOS Two-Factor Authentication — email 6-digit PIN — v1.6
 // Owner order (2026-11-16): every login must also enter a fresh
-// 6-digit PIN emailed to the user, so a stolen password alone
-// can never get anyone in. The SUPER ADMIN (owner) is exempt:
-// they can log in at any time, from any device, with no PIN.
-// PIN expires after 2 MINUTES. Three wrong attempts block the
-// login.
+// 6-digit PIN emailed to the user. SUPER ADMIN is exempt.
+// PIN expires after 2 MINUTES. Three wrong attempts block.
 //
-// v1.5 FIXES (frozen pending challenge blocked later logins):
-//  1. EXPIRY CHECK IN getPending(): a pending challenge whose
-//     2-minute clock has run out is deleted and treated as
-//     gone. Previously a stale pending record survived page
-//     reloads and made every later login for that account hit
-//     the "already pending" branch — silently skipping the
-//     overlay AND the email. This is the freeze the owner hit.
-//  2. OVERLAY REBUILD: if a valid challenge is pending but the
-//     overlay element is missing (e.g. the page was reloaded
-//     mid-challenge), the watcher rebuilds and shows it — the
-//     user is never left signed-out with an invisible challenge.
-//  3. window.BOS2FA.version now reports '1.5' so the live
-//     version is verifiable from the browser console.
+// v1.6 (owner order: "the 6 digit pin is not being sent — fix
+// it, make sure resend works, all tabs work"):
+//  1. DELIVERY VISIBILITY: the overlay now displays the EXACT
+//     backend URL the PIN request was POSTed to — or "NOT
+//     SENT" with the reason. No more silent dead-URL sends.
+//  2. URL DISCOVERY: if 'aetherion_sync_url' is empty, any
+//     storage key holding an Apps Script /exec URL is used.
+//  3. ALL TABS REPORT: Send, Resend, Verify and Cancel each
+//     update the on-screen status line, so every button's
+//     effect is visible.
 //
-// v1.4 FIXES (kept): session discovery + normalization (the
-// challenge fires whatever storage shape the CRM writes),
-// case-insensitive superadmin check with account-list fallback,
-// superadmin toast, missing-backend/missing-email warnings.
+// v1.5 (kept): expired challenges auto-clear (frozen pending
+// state fixed); overlay rebuilds after reload.
+// v1.4 (kept): session discovery + normalization; case-
+// insensitive superadmin check with account-list fallback;
+// superadmin toast; missing-email/missing-backend warnings.
 // ============================================================
 (function () {
   'use strict';
@@ -32,7 +27,7 @@
   // Embedded in the shell's iframe? The shell (index.html) runs 2FA.
   try { if (window.self !== window.top) return; } catch (e) { return; }
 
-  var VERSION = '1.5';
+  var VERSION = '1.6';
   var SESSION_KEY = 'aetherion_user';
   var USERS_KEY = 'aetherion_users';
   var PENDING_KEY = 'aetherion_2fa_pending';
@@ -53,11 +48,28 @@
     } catch (e) { return []; }
   }
 
-  function hasBackend() { return !!(ls(SYNC_URL_KEY) || '').trim(); }
+  // ---- v1.6: backend URL discovery + status ----
+  var SCRIPT_URL_RE = /^https:\/\/script\.google[a-z.]*\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec/;
+  function resolveSyncUrl() {
+    var primary = (ls(SYNC_URL_KEY) || '').trim();
+    if (primary) return primary;
+    try {
+      for (var j = 0; j < localStorage.length; j++) {
+        var k = localStorage.key(j);
+        if (!k) continue;
+        var v = (localStorage.getItem(k) || '').trim();
+        if (v && SCRIPT_URL_RE.test(v)) return v;
+      }
+    } catch (e) {}
+    return '';
+  }
+
+  function setStatus(msg) {
+    var el = document.getElementById('bos-2fa-status');
+    if (el) el.textContent = msg;
+  }
 
   // ---- session discovery ----
-  // Primary: 'aetherion_user'. Fallback: any storage key holding
-  // a JSON object whose username matches a real account.
   function rawSession() {
     var s = null;
     try { s = JSON.parse(ls(SESSION_KEY) || 'null'); } catch (e) { s = null; }
@@ -90,7 +102,6 @@
     return null;
   }
 
-  // ---- session normalization ----
   function normalizeSession(raw) {
     if (!raw || typeof raw !== 'object') return null;
     var s = {
@@ -117,14 +128,12 @@
     return r === 'superadmin';
   }
 
-  // ---- pending challenge (v1.5: expiry checked here) ----
+  // ---- pending challenge (expiry checked here — v1.5) ----
   function getPending() {
     var p = null;
     try { p = JSON.parse(ls(PENDING_KEY) || 'null'); } catch (e) { return null; }
     if (!p || !p.session || !p.session.id) { lsDel(PENDING_KEY); return null; }
     if (typeof p.exp === 'number' && Date.now() > p.exp) {
-      // v1.5: expired challenge is dead — clear it so a fresh
-      // login gets a fresh PIN instead of a frozen no-op.
       lsDel(PENDING_KEY);
       return null;
     }
@@ -151,9 +160,10 @@
   }
 
   // ---- email the PIN through the sync backend ----
+  // v1.6: returns { sent: bool, url: string, error: string }
   function sendPinEmail(email, pin, username) {
-    var url = (ls(SYNC_URL_KEY) || '').trim();
-    if (!url) return; // overlay explains this case
+    var url = resolveSyncUrl();
+    if (!url) return { sent: false, url: '', error: 'no backend URL found on this device' };
     var payload = {
       type: 'bos_2fa_pin',
       email: email,
@@ -164,7 +174,10 @@
     try {
       fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(payload) })
         .catch(function () {});
-    } catch (e) {}
+      return { sent: true, url: url, error: '' };
+    } catch (e) {
+      return { sent: false, url: url, error: String(e && e.message || e) };
+    }
   }
 
   // ---- overlay UI ----
@@ -186,7 +199,9 @@
       '<div style="display:flex;gap:8px;margin-top:10px;">' +
       '<button id="bos-2fa-resend" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Resend code</button>' +
       '<button id="bos-2fa-cancel" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Cancel</button>' +
-      '</div></div>';
+      '</div>' +
+      '<div id="bos-2fa-status" style="font-size:10px;color:#7A8B9C;margin-top:14px;word-break:break-all;line-height:1.5;text-align:left;"></div>' +
+      '</div>';
     document.body.appendChild(overlay);
     document.getElementById('bos-2fa-verify').addEventListener('click', function () { verifyPin(); });
     document.getElementById('bos-2fa-resend').addEventListener('click', function () { resendPin(); });
@@ -210,8 +225,6 @@
     errEl.textContent = '';
     if (!pending.email) {
       errEl.textContent = 'No email address is on file for this account — contact your administrator.';
-    } else if (!hasBackend()) {
-      errEl.textContent = 'PIN email NOT sent: no CloudSync backend URL is configured on this device. Set it in Settings → CloudSync, then press Resend.';
     }
     document.getElementById('bos-2fa-input').value = '';
     document.getElementById('bos-2fa-input').focus();
@@ -253,8 +266,17 @@
     };
     lsSet(PENDING_KEY, JSON.stringify(pending));
     try { localStorage.removeItem(found.key || SESSION_KEY); } catch (e) {}
-    if (email) sendPinEmail(email, pin, s.username);
     showOverlay(pending);
+    if (email) {
+      var r = sendPinEmail(email, pin, s.username);
+      if (r.sent) {
+        setStatus('PIN request SENT to backend:\n' + r.url + '\nCheck that address (and spam) — it expires in 2 minutes.');
+      } else {
+        setStatus('PIN request NOT SENT — ' + r.error + '.\nSet the CloudSync backend URL in Settings, then press Resend.');
+      }
+    } else {
+      setStatus('PIN NOT SENT — no email address on file for "' + s.username + '". Set it in Users & Access.');
+    }
   }
 
   function resendPin() {
@@ -265,13 +287,16 @@
     p.attempts = 0;
     lsSet(PENDING_KEY, JSON.stringify(p));
     var errEl = document.getElementById('bos-2fa-error');
-    if (p.email && hasBackend()) {
-      sendPinEmail(p.email, p.pin, p.session.username);
-      errEl.textContent = '';
-    } else if (!p.email) {
-      errEl.textContent = 'No email address is on file for this account — contact your administrator.';
+    errEl.textContent = '';
+    if (p.email) {
+      var r = sendPinEmail(p.email, p.pin, p.session.username);
+      if (r.sent) {
+        setStatus('RESENT to backend:\n' + r.url);
+      } else {
+        setStatus('RESEND FAILED — ' + r.error + '.\nSet the CloudSync backend URL in Settings, then press Resend again.');
+      }
     } else {
-      errEl.textContent = 'PIN email NOT sent: no CloudSync backend URL is configured on this device. Set it in Settings → CloudSync, then press Resend.';
+      setStatus('RESEND FAILED — no email on file for "' + p.session.username + '".');
     }
     document.getElementById('bos-2fa-input').focus();
   }
@@ -288,7 +313,6 @@
     if (!p) { hideOverlay(); return; }
     if (Date.now() > p.exp) { errEl.textContent = 'Code expired — press Resend.'; return; }
     if (!p.email) { errEl.textContent = 'No email on file — contact your administrator.'; return; }
-    if (!hasBackend()) { errEl.textContent = 'PIN was never emailed: configure the CloudSync backend URL, then press Resend.'; return; }
     if (input.trim() !== String(p.pin)) {
       p.attempts = (p.attempts || 0) + 1;
       lsSet(PENDING_KEY, JSON.stringify(p));
@@ -320,7 +344,6 @@
     var found = rawSession();
     var s = found ? normalizeSession(found.obj) : null;
     if (!s) {
-      // Signed out (or held back): verified state is void.
       lsDel(VERIFIED_KEY);
       return;
     }
@@ -336,9 +359,6 @@
     if (isVerified(s.id)) { lsDel(PENDING_KEY); hideOverlay(); return; }
     var p = getPending();
     if (p && p.session && p.session.id === s.id) {
-      // v1.5: challenge valid but overlay missing (page was
-      // reloaded mid-challenge) — rebuild it so the user can
-      // actually finish signing in.
       if (!document.getElementById('bos-2fa-overlay')) showOverlay(p);
       return;
     }
