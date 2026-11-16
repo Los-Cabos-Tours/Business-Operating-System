@@ -1,79 +1,152 @@
 // ============================================================
-// BOS Two-Factor Authentication — email 6-digit PIN — v1.2
+// BOS Two-Factor Authentication — email 6-digit PIN — v1.4
 // Owner order (2026-11-16): every login must also enter a fresh
 // 6-digit PIN emailed to the user, so a stolen password alone
 // can never get anyone in. The SUPER ADMIN (owner) is exempt:
 // they can log in at any time, from any device, with no PIN.
-// Owner order (updated): PIN expires after 2 MINUTES. Three
-// wrong attempts block the login.
+// PIN expires after 2 MINUTES. Three wrong attempts block the
+// login.
 //
-// HOW IT WORKS (parent page, same-origin with the CRM frame):
-//  1. Watch for a fresh sign-in (aetherion_user session).
-//  2. If the account is superadmin -> allowed immediately.
-//  3. Otherwise: the session is held back, a 6-digit PIN is
-//     generated, and the configured sync backend is asked to
-//     email it to the user's address on file (aetherion_users).
-//     The CRM's own login gate re-engages behind the overlay,
-//     so the session cannot be used while the PIN is pending.
-//  4. User types the PIN within 2 minutes. Correct -> session
-//     restored, this device is verified for that account.
-//     3 wrong entries -> login is blocked; they must start the
-//     sign-in again from the beginning.
-//  5. Every NEW sign-in requires a new PIN (verified state is
-//     cleared on sign-out).
-//
-// EMAIL DELIVERY: the sync backend (Apps Script) must include
-// the email handler (see repo docs). Without it, no email can
-// be sent — the overlay says so plainly.
-//
-// SECURITY NOTES, stated honestly:
-//  - The PIN is verified on this device. This stops a leaked
-//    password being used on ANOTHER computer — the attacker's
-//    device never receives the PIN email. It cannot stop an
-//    attacker who physically uses this same browser profile.
-//  - Superadmin exemption is intentional (owner order).
+// v1.4 FIXES (PIN was never asked on some logins):
+//  1. SESSION DISCOVERY: v1.2 only recognized a sign-in stored
+//     as 'aetherion_user' WITH id + role fields. A session
+//     stored under a different key or shape was invisible, so
+//     the challenge silently never fired. v1.4 finds the
+//     sign-in record wherever it lives (any storage key holding
+//     a JSON object whose username matches a real account) and
+//     normalizes it (id + role filled from the account list).
+//     The ORIGINAL record is held back untouched and restored
+//     exactly as the CRM wrote it on success.
+//  2. SUPERADMIN CHECK is case/spacing-insensitive and falls
+//     back to the account's stored role when the session
+//     record carries none.
+//  3. VISIBLE FEEDBACK: a superadmin login shows a toast saying
+//     the PIN was skipped; a missing CloudSync backend URL is
+//     stated on the overlay instead of pretending a code was sent.
+//  4. EMBEDDED MODE: inside the CRM iframe this script defers to
+//     the shell (index.html), which owns the 2FA flow.
 // ============================================================
 (function () {
   'use strict';
 
+  // Embedded in the shell's iframe? The shell (index.html) runs 2FA.
+  try { if (window.self !== window.top) return; } catch (e) { return; }
+
+  var VERSION = '1.4';
   var SESSION_KEY = 'aetherion_user';
+  var USERS_KEY = 'aetherion_users';
   var PENDING_KEY = 'aetherion_2fa_pending';
   var VERIFIED_KEY = 'aetherion_2fa_verified';
-  var PIN_TTL_MS = 2 * 60 * 1000;      // owner order: 2 minutes
+  var SYNC_URL_KEY = 'aetherion_sync_url';
+  var PIN_TTL_MS = 2 * 60 * 1000;          // owner order: 2 minutes
   var VERIFIED_TTL_MS = 12 * 60 * 60 * 1000;
-  var MAX_ATTEMPTS = 3;                // owner order: 3 wrong attempts block the login
+  var MAX_ATTEMPTS = 3;                    // owner order: 3 wrong attempts block
 
   function ls(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
 
-  function getSession() {
-    try { var s = JSON.parse(ls(SESSION_KEY) || 'null'); return (s && s.id) ? s : null; } catch (e) { return null; }
+  function readUsers() {
+    try {
+      var arr = JSON.parse(ls(USERS_KEY) || '[]');
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
   }
+
+  function hasBackend() { return !!(ls(SYNC_URL_KEY) || '').trim(); }
+
+  // ---- session discovery (v1.4) ----
+  // Primary: 'aetherion_user'. Fallback: any storage key holding
+  // a JSON object whose username matches a real account.
+  function rawSession() {
+    var s = null;
+    try { s = JSON.parse(ls(SESSION_KEY) || 'null'); } catch (e) { s = null; }
+    if (s && typeof s === 'object' && !Array.isArray(s) &&
+        typeof s.username === 'string' && s.username) {
+      return { key: SESSION_KEY, obj: s };
+    }
+    var skip = {};
+    skip[SESSION_KEY] = 1; skip[USERS_KEY] = 1;
+    skip[PENDING_KEY] = 1; skip[VERIFIED_KEY] = 1;
+    try {
+      var users = readUsers();
+      var names = {};
+      for (var i = 0; i < users.length; i++) {
+        if (users[i] && users[i].username) names[users[i].username] = true;
+      }
+      for (var j = 0; j < localStorage.length; j++) {
+        var k = localStorage.key(j);
+        if (!k || skip[k]) continue;
+        var v = null;
+        try { v = JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { continue; }
+        if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+        if (typeof v.username !== 'string' || !v.username || !names[v.username]) continue;
+        if (v.role !== undefined || v.id !== undefined || v.name !== undefined ||
+            v.loginAt !== undefined || v.timestamp !== undefined || v.expiresAt !== undefined) {
+          return { key: k, obj: v };
+        }
+      }
+    } catch (e) { /* storage blocked */ }
+    return null;
+  }
+
+  // ---- session normalization (v1.4) ----
+  function normalizeSession(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    var s = {
+      id: (raw.id !== undefined && raw.id !== null) ? String(raw.id) : null,
+      username: (typeof raw.username === 'string') ? raw.username : null,
+      role: (typeof raw.role === 'string' && raw.role) ? raw.role : null
+    };
+    if (!s.username) return null;
+    var users = readUsers();
+    for (var i = 0; i < users.length; i++) {
+      var u = users[i];
+      if (u && typeof u === 'object' && u.username === s.username) {
+        if (!s.id && u.id !== undefined && u.id !== null) s.id = String(u.id);
+        if (!s.role && typeof u.role === 'string' && u.role) s.role = u.role;
+        break;
+      }
+    }
+    if (!s.id) s.id = 'u:' + s.username; // stable fallback id
+    return s;
+  }
+
+  function isSuperAdmin(s) {
+    var r = String((s && s.role) || '').toLowerCase().replace(/[\s_-]/g, '');
+    return r === 'superadmin';
+  }
+
   function getPending() {
-    try { var p = JSON.parse(ls(PENDING_KEY) || 'null'); return (p && p.session && p.session.id) ? p : null; } catch (e) { return null; }
+    try {
+      var p = JSON.parse(ls(PENDING_KEY) || 'null');
+      return (p && p.session && p.session.id) ? p : null;
+    } catch (e) { return null; }
   }
+
   function isVerified(id) {
     try {
       var v = JSON.parse(ls(VERIFIED_KEY) || 'null');
       return !!(v && v.id === id && Date.now() < v.exp);
     } catch (e) { return false; }
   }
-  function findUserEmail(id) {
-    try {
-      var arr = JSON.parse(ls('aetherion_users') || '[]');
-      if (!Array.isArray(arr)) return null;
-      for (var i = 0; i < arr.length; i++) {
-        if (arr[i] && arr[i].id === id) return arr[i].email || null;
-      }
-      return null;
-    } catch (e) { return null; }
+
+  function findUserEmail(s) {
+    var users = readUsers();
+    for (var i = 0; i < users.length; i++) {
+      var u = users[i];
+      if (!u || typeof u !== 'object') continue;
+      if (String(u.id) === String(s.id)) return u.email || null;
+      if (String(s.id).indexOf('u:') === 0 && u.username === s.username) return u.email || null;
+      if (u.username === s.username) return u.email || null;
+    }
+    return null;
   }
 
   // ---- email the PIN through the sync backend ----
   function sendPinEmail(email, pin, username) {
-    var url = (ls('aetherion_sync_url') || '').trim();
-    if (!url) return;
+    var url = (ls(SYNC_URL_KEY) || '').trim();
+    if (!url) return; // overlay explains this case
     var payload = {
       type: 'bos_2fa_pin',
       email: email,
@@ -125,8 +198,14 @@
   function showOverlay(pending) {
     buildOverlay();
     var emailEl = document.getElementById('bos-2fa-email');
+    var errEl = document.getElementById('bos-2fa-error');
     emailEl.textContent = 'A 6-digit code was sent to ' + (pending.email ? maskEmail(pending.email) : 'your email') + '. Enter it to finish signing in as ' + pending.session.username + '.';
-    document.getElementById('bos-2fa-error').textContent = pending.email ? '' : 'No email address is on file for this account — contact your administrator.';
+    errEl.textContent = '';
+    if (!pending.email) {
+      errEl.textContent = 'No email address is on file for this account — contact your administrator.';
+    } else if (!hasBackend()) {
+      errEl.textContent = 'PIN email NOT sent: no CloudSync backend URL is configured on this device. Set it in Settings → CloudSync, then press Resend.';
+    }
     document.getElementById('bos-2fa-input').value = '';
     document.getElementById('bos-2fa-input').focus();
   }
@@ -137,20 +216,37 @@
     overlay = null;
   }
 
+  // ---- toast (v1.4): no more silent skips ----
+  function toast(msg) {
+    var t = document.getElementById('bos-2fa-toast');
+    if (t) return;
+    t = document.createElement('div');
+    t.id = 'bos-2fa-toast';
+    t.style.cssText = 'position:fixed;bottom:18px;right:18px;z-index:100000;background:#0A1628;border:1px solid rgba(201,168,76,0.45);color:#F0EAD6;font-family:Inter,sans-serif;font-size:12px;padding:10px 14px;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.5);max-width:340px;line-height:1.5;';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function () {
+      var el = document.getElementById('bos-2fa-toast');
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    }, 6000);
+  }
+
   // ---- challenge lifecycle ----
-  function startChallenge(session) {
-    var email = findUserEmail(session.id);
+  function startChallenge(s, found) {
+    var email = findUserEmail(s);
     var pin = String(Math.floor(100000 + Math.random() * 900000));
     var pending = {
-      session: session,
+      session: s,
+      sessionRaw: found.obj,
+      sessionKey: found.key,
       email: email,
       pin: pin,
       exp: Date.now() + PIN_TTL_MS,
       attempts: 0
     };
     lsSet(PENDING_KEY, JSON.stringify(pending));
-    lsDel(SESSION_KEY);
-    if (email) sendPinEmail(email, pin, session.username);
+    try { localStorage.removeItem(found.key || SESSION_KEY); } catch (e) {}
+    if (email) sendPinEmail(email, pin, s.username);
     showOverlay(pending);
   }
 
@@ -161,8 +257,15 @@
     p.exp = Date.now() + PIN_TTL_MS;
     p.attempts = 0;
     lsSet(PENDING_KEY, JSON.stringify(p));
-    if (p.email) sendPinEmail(p.email, p.pin, p.session.username);
-    document.getElementById('bos-2fa-error').textContent = '';
+    var errEl = document.getElementById('bos-2fa-error');
+    if (p.email && hasBackend()) {
+      sendPinEmail(p.email, p.pin, p.session.username);
+      errEl.textContent = '';
+    } else if (!p.email) {
+      errEl.textContent = 'No email address is on file for this account — contact your administrator.';
+    } else {
+      errEl.textContent = 'PIN email NOT sent: no CloudSync backend URL is configured on this device. Set it in Settings → CloudSync, then press Resend.';
+    }
     document.getElementById('bos-2fa-input').focus();
   }
 
@@ -178,6 +281,7 @@
     if (!p) { hideOverlay(); return; }
     if (Date.now() > p.exp) { errEl.textContent = 'Code expired — press Resend.'; return; }
     if (!p.email) { errEl.textContent = 'No email on file — contact your administrator.'; return; }
+    if (!hasBackend()) { errEl.textContent = 'PIN was never emailed: configure the CloudSync backend URL, then press Resend.'; return; }
     if (input.trim() !== String(p.pin)) {
       p.attempts = (p.attempts || 0) + 1;
       lsSet(PENDING_KEY, JSON.stringify(p));
@@ -191,34 +295,44 @@
       return;
     }
     lsSet(VERIFIED_KEY, JSON.stringify({ id: p.session.id, exp: Date.now() + VERIFIED_TTL_MS }));
-    lsSet(SESSION_KEY, JSON.stringify(p.session));
+    // Restore the ORIGINAL sign-in record exactly as the CRM wrote it.
+    lsSet(p.sessionKey || SESSION_KEY, JSON.stringify(p.sessionRaw || p.session));
     lsDel(PENDING_KEY);
     hideOverlay();
     var frame = document.getElementById('bos-frame');
-    try { if (frame) frame.contentWindow.location.reload(); } catch (e) { if (frame) frame.src = frame.src; }
+    if (frame) {
+      try { frame.contentWindow.location.reload(); } catch (e) { frame.src = frame.src; }
+    } else {
+      window.location.reload();
+    }
   }
 
   // ---- watcher ----
+  var lastSuperadminId = null;
   function tick() {
-    var s = getSession();
+    var found = rawSession();
+    var s = found ? normalizeSession(found.obj) : null;
     if (!s) {
-      // Signed out (or held back): verified state is void — every
-      // NEW sign-in must earn a fresh PIN. Never clear a pending
-      // challenge here (the CRM gate is intentionally showing
-      // behind it).
+      // Signed out (or held back): verified state is void.
       lsDel(VERIFIED_KEY);
       return;
     }
-    if (s.role === 'superadmin') {
+    if (isSuperAdmin(s)) {
       lsDel(PENDING_KEY);
       hideOverlay();
+      if (lastSuperadminId !== s.id) {
+        lastSuperadminId = s.id;
+        toast('Signed in as superadmin — PIN step is skipped (owner rule). If you expected a PIN code, this account is superadmin.');
+      }
       return;
     }
     if (isVerified(s.id)) { lsDel(PENDING_KEY); hideOverlay(); return; }
-    if (getPending() && getPending().session.id === s.id) return;
-    startChallenge(s);
+    var p = getPending();
+    if (p && p.session && p.session.id === s.id) return;
+    startChallenge(s, found);
   }
 
   setInterval(tick, 500);
   tick();
+  window.BOS2FA = { version: VERSION };
 })();
