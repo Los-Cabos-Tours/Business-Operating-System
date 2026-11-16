@@ -9,6 +9,12 @@
   </style>
 </head>
 <body>
+  <!-- SECURITY GUARD — runs FIRST. Demo accounts that still carry their
+       shipped default passwords (printed in the public repo) are disabled
+       and any session using them is killed. Only real accounts with
+       CHANGED passwords keep working. Must load before cross-device-login
+       and boot-sync so disabled accounts can never be revived. -->
+  <script src="js/security-guard.js"></script>
   <!-- Cross-device login: pulls the shared user-account list from the
        configured sync backend into this browser's storage before login
        is attempted, so any account works on any computer or device.
