@@ -9,7 +9,7 @@
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.6';
+  var VERSION = '3.7';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js',
     'slf-board-forms.js', 'slf-board-panel.js',
