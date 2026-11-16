@@ -1,8 +1,7 @@
-// Forth panel bridge v4 — user directive: Client Information
-// keeps ONLY Update Status. Quick Message, File Type, Workflow
-// History, Income/Expenses, and the case list are REMOVED:
-// they duplicate tabs that already exist on the right side.
-// v4 is the 3rd request - this time it ships verified.
+// Forth panel bridge v5: Client Information = Update Status +
+// Income/Expenses (View Budget) only. Budget row restored per the
+// user's screenshots (removed by v4 by mistake). All other rows
+// stay gone - no duplication of the tabs.
 'use strict';
 SLFBoard.panel.forthPanel = function (c) {
   var esc = SLFBoard.esc;
@@ -16,7 +15,8 @@ SLFBoard.panel.forthPanel = function (c) {
   }).join('');
 
   return '<h4>Client Information</h4>' +
-    '<div class="frow"><span class="flab">Update Status</span><select id="f-stage" onchange="SLFBoard.updateStage(this.value)">' + stageOptions + '</select></div>';
+    '<div class="frow"><span class="flab">Update Status</span><select id="f-stage" onchange="SLFBoard.updateStage(this.value)">' + stageOptions + '</select></div>' +
+    '<div class="frow"><span class="flab">Income / Expenses</span><a href="#" onclick="SLFBoard.setTab(\'budget\');return false;">View Budget</a></div>';
 };
 
 SLFBoard.updateStage = function (stageId) {
