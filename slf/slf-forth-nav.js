@@ -1,14 +1,15 @@
-// Forth clone — top navigation bar module v4.
-// Owner correction (this session): the magnifying glass belongs
-// HERE — in the action bar, first item, exactly where Contact
-// Search originally sat. NOT at the end of the nested tab strip.
-// Clicking the glass changes NOTHING on screen except showing
-// the inline search field inside this bar — the current tab,
-// its records, and the whole workspace stay untouched (no tab
-// switch, no workspace replacement). The user can start typing
-// immediately.
-// Everything else identical to v3 (bind on DOMContentLoaded,
-// 8 labeled actions, #34's Update Status block untouched).
+// Forth clone — top navigation bar module v5.
+// Owner correction (this session): clicking the magnifying glass
+// must produce ZERO change on screen — not even the search box
+// appearing counts as "no change". v4 toggled the box's display,
+// which visibly altered the bar the moment you clicked. v5 keeps
+// the search input ALWAYS IN THE BAR (identical pixels before and
+// after the click) — clicking the glass does exactly one thing:
+// focuses the cursor in that box so the user starts typing.
+// No toggle. Nothing appears. Nothing moves. The current tab and
+// the whole workspace are untouched.
+// Everything else identical to v4 (8 labeled actions, #34's
+// Update Status block untouched).
 'use strict';
 (function () {
   if (!window.SLFBoard) return;
@@ -23,8 +24,8 @@
         return '<span class="fnavi" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLFBoard.navAction(\'' + action + '\')">' + label + '</span>';
       }
       return '<div class="fnav" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 12px 0;padding:8px 12px;background:rgba(15,32,64,0.35);border:1px solid var(--line);border-radius:10px;">' +
-        '<span class="fnavi" title="Search this contact\'s records" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLFBoard.toggleSearch()">' + GLASS + '</span>' +
-        '<input id="fnav-search-input" placeholder="Search this contact\'s records…" style="display:none;width:220px;max-width:220px;padding:4px 8px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);background:rgba(10,22,40,0.6);color:var(--text);font-family:inherit;" oninput="SLFBoard.runContactSearch(this.value)" />' +
+        '<span class="fnavi" title="Search this contact\'s records" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLFBoard.focusSearch()">' + GLASS + '</span>' +
+        '<input id="fnav-search-input" placeholder="Search this contact\'s records…" style="display:inline-block;width:220px;max-width:220px;padding:4px 8px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);background:rgba(10,22,40,0.6);color:var(--text);font-family:inherit;" oninput="SLFBoard.runContactSearch(this.value)" />' +
         item('Edit Contact', 'edit') +
         item('Clone', 'clone') +
         item('Create Order', 'order') +
