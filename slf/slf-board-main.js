@@ -1,4 +1,4 @@
-// SLF Board main controller (split 5/5) v2
+// SLF Board main controller (split 5/5) v3
 'use strict';
 (function () {
   function displayLine(tab, r) {
@@ -38,7 +38,6 @@
     v.innerHTML =
       '<style>' + SLFBoard.css() + '</style>' +
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
-      '<a href="#" class="bbk" onclick="SLFBoard.close();return false;">&larr; Back to Clients</a>' +
       '<span class="bbkname">' + SLFBoard.esc(c.name) + '</span>' +
       '<span class="btagid">' + SLFBoard.esc(c.id) + '</span>' +
       '<span style="flex:1;"></span>' +
@@ -90,29 +89,7 @@
   // Save Profile v2: custom fields are the ONLY editable fields
   // (rendered by the designer layout); base email/phone are no
   // longer fixed rows, so PRESERVE them instead of blanking.
-  SLFBoard.saveProfile = function () {
-    var c = SLFBoard.client();
-    if (!c) return;
-    var custom = {};
-    if (window.SLFFields) {
-      var res = SLFFields.readInputs('client', 'pe-cf-');
-      if (res.errors && res.errors.length) {
-        alert('Please fix these first:\n- ' + res.errors.join('\n- '));
-        return;
-      }
-      custom = res.values;
-    }
-    c.custom = custom;
-    c.notes = SLFBoard.val('pe-notes').trim();
-    c.updatedAt = Date.now();
-    if (window.SLF) {
-      SLF_STORE.write(SLF_CLIENTS_KEY, SLF.clients);
-      SLF.log('board', 'profile (' + c.id + ')', 'profile edited from dashboard');
-    }
-    flash('Profile saved.');
-    render();
-  };
-
+  // (saveProfile itself lives in slf-notes-patch.js v2+.)
   function flash(msg) {
     var el = document.getElementById('pe-flash');
     if (!el) return;
