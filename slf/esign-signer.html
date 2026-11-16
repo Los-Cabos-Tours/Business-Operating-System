@@ -97,7 +97,7 @@ canvas { background:#F5EDD8; border-radius:10px; border:1px solid var(--line); t
     for (var j = 0; j < withOne; j++) {
       var w = new Array(64);
       var t;
-      for (t = 0; t < 16; tamper t++) w[t] = words[j * 16 + t];
+      for (t = 0; t < 16; t++) w[t] = words[j * 16 + t];
       for (t = 16; t < 64; t++) {
         var s0 = rotr(7, w[t - 15]) ^ rotr(18, w[t - 15]) ^ (w[t - 15] >>> 3);
         var s1 = rotr(17, w[t - 2]) ^ rotr(19, w[t - 2]) ^ (w[t - 2] >>> 10);
@@ -121,6 +121,8 @@ canvas { background:#F5EDD8; border-radius:10px; border:1px solid var(--line); t
     return out;
   }
 
+  // Identical formula to slf-esign.js contentHash():
+  // id | docName | docText | signerName | signerEmail | createdAt
   function contentHash() {
     return sha256(requestId + '|' + docName + '|' + docText + '|' + signerName + '|' + (q.email || '') + '|' + (q.created || ''));
   }
@@ -129,7 +131,6 @@ canvas { background:#F5EDD8; border-radius:10px; border:1px solid var(--line); t
   document.getElementById('hash-box').textContent = 'Document hash (SHA-256): ' + (linkHash || computed);
 
   if (linkHash && computed !== linkHash) {
-    document.getElementById('sig-status').textContent = '';
     document.getElementById('doc-text').textContent = 'This signature link appears to have been altered (hash mismatch). Do not sign. Contact the sender.';
     document.getElementById('btn-sign').disabled = true;
   }
@@ -169,7 +170,7 @@ canvas { background:#F5EDD8; border-radius:10px; border:1px solid var(--line); t
     var typed = document.getElementById('typed-name').value.trim();
     var agree = document.getElementById('agree').checked;
     var st = document.getElementById('sig-status');
-    if (!hasInk) { st.textContent = 'Please sign inside the box first.' ; st.className = 'err'; return; }
+    if (!hasInk) { st.textContent = 'Please sign inside the box first.'; st.className = 'err'; return; }
     if (!typed) { st.textContent = 'Please type your full legal name.'; st.className = 'err'; return; }
     if (!agree) { st.textContent = 'Please tick the agreement box to confirm you intend to sign.'; st.className = 'err'; return; }
     var signedAt = new Date().toISOString();
