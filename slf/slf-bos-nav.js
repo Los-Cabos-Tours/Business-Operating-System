@@ -1,23 +1,15 @@
 // ============================================================
 // REQUIRED CRM NAVIGATION ARCHITECTURE (owner specification)
-// Implements exactly the specified structure:
-//   - 17 main CRM modules in the top navigation, in order:
-//     Dashboard, Guidelines, Contacts, Creditors, Tasks, Calendar,
-//     Enrollments, Accounting, Billing, Settlements, Docs, Files,
-//     E-Marketing, SMS, Reports, Insights, Admin
-//   - Contacts workspace: directory -> individual contact -> Client
-//     Dashboard (breadcrumb: Main CRM / Contacts / <contact>)
-//   - Contact action bar: Contact search, Edit Contact, Clone,
-//     Create Order, Budget Analysis, Creditors, Enrollment,
-//     Settlements, Add Alert (+ Favorites selector)
-//   - Nested tabs: the 14 required PLUS the already-shipped Budget
-//     and Servicing and Alerts tabs (owner-approved earlier).
-//     Missing-from-spec but required-by-spec: Lenders tab.
-// Modules without developed functionality get a real, clearly
-// identified development-placeholder workspace — every tab opens a
-// destination; nothing is a dead click. No second app, no iframes,
-// no redirects. Existing storage untouched; placeholders store
-// nothing until their module is developed.
+// v3 — APPEND ONLY. The v1 bug: nav.innerHTML replaced the entire
+// sidebar and destroyed the buttons for the existing developed
+// views (Cases & Pipeline, Activity History, Backup & Restore,
+// Custom Fields, Signatures). Owner order: restore everything,
+// add the missing tabs, take nothing away. This version:
+//   - leaves every existing nav button in place and working
+//   - APPENDS the 17 spec modules after them (idempotent)
+//   - keeps the 9-item contact action bar, Lenders tab,
+//     breadcrumb, contact search, and placeholder workspaces
+// DO NOT REPLACE THE NAV IN ANY FUTURE CHANGE.
 // ============================================================
 'use strict';
 (function () {
@@ -76,10 +68,7 @@
     })(SLFBoard.recLabel);
   }
 
-  // ---------- 2. Main CRM top navigation (spec #1) ----------
-  // The 17 modules. 'view' maps to an existing SLF view where one
-  // exists; otherwise 'placeholder' opens the in-shell dev
-  // workspace. Contacts is the entry to the contact dashboards.
+  // ---------- 2. Main CRM modules (spec #1) — appended, never replacing ----------
   var MODULES = [
     { id: 'dashboard', name: 'Dashboard', view: 'dashboard' },
     { id: 'guidelines', name: 'Guidelines', placeholder: true },
@@ -105,20 +94,28 @@
     activeModule: 'dashboard',
     activePlaceholder: null,
 
-    // Render the 17-module bar into the existing sidebar nav area.
-    renderTopNav: function () {
+    moduleNameById: function (id) {
+      for (var i = 0; i < MODULES.length; i++) {
+        if (MODULES[i].id === id) return MODULES[i].name;
+      }
+      return id;
+    },
+
+    // APPENDS the module buttons AFTER every existing nav button.
+    // Existing data-view buttons are untouched and keep their
+    // original listeners. Idempotent: safe on every boot/render.
+    appendTopNav: function () {
       var nav = document.getElementById('nav');
       if (!nav || !window.SLF) return;
-      var self = this;
-      var html = MODULES.map(function (m) {
-        return '<button data-bos="' + m.id + '"' + (m.id === self.activeModule ? ' class="active"' : '') + '>' + m.name + '</button>';
-      }).join('');
-      nav.innerHTML = html;
-      Array.prototype.forEach.call(nav.querySelectorAll('button[data-bos]'), function (b) {
-        b.addEventListener('click', function () {
-          self.selectModule(b.getAttribute('data-bos'));
-        });
+      if (nav.querySelector('[data-bos]')) return; // already added
+      MODULES.forEach(function (m) {
+        var b = document.createElement('button');
+        b.setAttribute('data-bos', m.id);
+        b.textContent = m.name;
+        b.addEventListener('click', function () { BOSCRM.selectModule(m.id); });
+        nav.appendChild(b);
       });
+      this.syncActive();
     },
 
     selectModule: function (id) {
@@ -128,47 +125,57 @@
       this.activeModule = m.id;
       this.activePlaceholder = m.placeholder ? m.id : null;
       if (m.view && window.SLF) {
-        // Existing SLF view — use it (Contacts -> clients directory).
         if (SLFBoard.state().clientId) SLFBoard.close();
         SLF.view = m.view;
         SLF.render();
       } else {
         this.renderPlaceholder();
       }
-      this.renderTopNav();
+      this.syncActive();
     },
 
     renderPlaceholder: function () {
       if (!window.SLF) return;
       var v = document.getElementById('view');
       var t = document.getElementById('view-title');
-      var m = null;
-      for (var i = 0; i < MODULES.length; i++) if (MODULES[i].id === this.activeModule) m = MODULES[i];
-      if (!m) return;
+      var name = this.moduleNameById(this.activeModule);
       if (SLFBoard.state().clientId) SLFBoard.close();
-      if (t) t.textContent = m.name;
+      if (t) t.textContent = name;
       if (v) {
-        v.innerHTML = '<div class="card"><h3>' + m.name + ' — module workspace</h3>' +
+        v.innerHTML = '<div class="card"><h3>' + name + ' — module workspace</h3>' +
           '<p style="color:var(--muted);font-size:13px;">This module\'s navigation destination is live. ' +
-          'The ' + m.name + ' workflow is in development. No data is stored here yet — records will be added when the module ships.</p></div>';
+          'The ' + name + ' workflow is in development. No data is stored here yet — records will be added when the module ships.</p></div>';
       }
+    },
+
+    // Highlight sync for BOTH button kinds: existing data-view
+    // buttons and the appended data-bos module buttons.
+    syncActive: function () {
+      var nav = document.getElementById('nav');
+      if (!nav || !window.SLF) return;
+      var modId = this.activeModule;
+      if (SLFBoard.state().clientId) modId = 'contacts';
+      var self = this;
+      Array.prototype.forEach.call(nav.children, function (b) {
+        var dv = b.getAttribute('data-view');
+        var db = b.getAttribute('data-bos');
+        if (dv) {
+          b.classList.toggle('active', SLF.view === dv && !SLFBoard.state().clientId);
+        } else if (db) {
+          b.classList.toggle('active', db === modId);
+        }
+      });
     }
   };
 
-  // ---------- 3. Contact action bar: add Contact search + Add Alert ----------
+  // ---------- 3. Contact action bar: Contact Search + Add Alert ----------
   if (SLFBoard.panel) {
     var rawNav = SLFBoard.panel.forthNavHtml;
     if (rawNav) {
       SLFBoard.panel.forthNavHtml = function (c) {
         var base = rawNav(c);
-        var esc = SLFBoard.esc;
-        // Contact search (spec action 1) — filters the directory
-        // when executed from the dashboard; here it jumps to the
-        // search field of the Contacts workspace.
         var search = '<span class="fnavi" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLF.view=\'clients\';SLF.render();setTimeout(function(){var s=document.getElementById(\'client-search\');if(s)s.focus();},50)">Contact Search</span>';
-        // Add Alert (spec action 9) — jumps to the Alerts tab's quick-add.
         var addAlert = '<span class="fnavi" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLFBoard.setTab(\'alerts\');setTimeout(function(){var f=document.getElementById(\'q-aname\');if(f)f.focus();},60)">Add Alert</span>';
-        // Favorites selector (spec: "where appropriate").
         var favs = '<span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;">' +
           '<span style="color:var(--muted);font-size:11px;">Favorites</span>' +
           '<select id="fav-select" style="width:auto;max-width:150px;padding:4px 8px;font-size:11px;">' +
@@ -177,7 +184,7 @@
       };
     }
 
-    // Breadcrumb (spec #5): Main CRM / Contacts / <contact name>
+    // Breadcrumb (spec #5): Main CRM / Contacts / <contact>
     SLFBoard.panel.breadcrumbHtml = function (c) {
       return '<div style="font-size:11px;color:var(--muted);margin:0 0 8px 0;">' +
         'Main CRM / Contacts / ' + SLFBoard.esc(c.name) + '</div>';
@@ -187,13 +194,7 @@
   // ---------- 4. Wire up ----------
   function boot() {
     if (!window.SLF || !window.BOSCRM) return;
-    BOSCRM.renderTopNav();
-    if (SLFBoard.panel && SLFBoard.panel.breadcrumbHtml) {
-      var rawTabBody = SLFBoard.panel.tabBody;
-      SLFBoard.panel.tabBody = function (c) {
-        return (SLFBoard.panel.breadcrumbHtml ? SLFBoard.panel.breadcrumbHtml(c) : '') + rawTabBody(c);
-      };
-    }
+    BOSCRM.appendTopNav();
   }
 
   if (document.readyState === 'loading') {
