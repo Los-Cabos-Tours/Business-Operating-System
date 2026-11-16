@@ -36,4 +36,61 @@
   if (SLFBoard.budgetTotals) {
     SLFBoard.TABS.unshift({ id: 'budget', name: 'Budget', note: 'Income and expenses for this client.' });
   }
+
+  // ---- Servicing tab: form, validation, list line, label ----
+  if (SLFBoard.forms && SLFBoard.forms.fld) {
+    SLFBoard.forms.build = (function (orig) {
+      return function (tab) {
+        if (tab === 'servicing') {
+          return SLFBoard.forms.fld('Servicer', 'q-servicer', 'MOHELA / Aidvantage / Nelnet') +
+            SLFBoard.forms.fld('Interaction type', 'q-saction', 'call / email / portal / payment') +
+            SLFBoard.forms.fld('Date', 'q-sdate', '', 'date') +
+            SLFBoard.forms.fld('Outcome / notes', 'q-snotes', 'What happened');
+        }
+        return orig(tab);
+      };
+    })(SLFBoard.forms.build);
+  }
+
+  if (SLFBoard.val) {
+    SLFBoard.readForm = (function (orig) {
+      return function (tab) {
+        if (tab === 'servicing') {
+          var val = SLFBoard.val;
+          var rec = {
+            servicer: val('q-servicer'),
+            action: val('q-saction'),
+            date: val('q-sdate'),
+            notes: val('q-snotes')
+          };
+          if (!rec.servicer) { alert('Servicer is required.'); return null; }
+          if (!rec.action) { alert('Interaction type is required.'); return null; }
+          return rec;
+        }
+        return orig(tab);
+      };
+    })(SLFBoard.readForm);
+  }
+
+  if (SLFBoard.line) {
+    SLFBoard.line = (function (orig) {
+      return function (tab, r) {
+        if (tab === 'servicing') {
+          return (r.servicer || '') + (r.action ? ' — ' + r.action : '') + (r.date ? ' — ' + r.date : '') + (r.notes ? ' — ' + r.notes : '');
+        }
+        return orig(tab, r);
+      };
+    })(SLFBoard.line);
+  }
+
+  if (SLFBoard.recLabel) {
+    SLFBoard.recLabel = (function (orig) {
+      return function (tab, rec) {
+        if (tab === 'servicing') {
+          return [rec.servicer, rec.action, rec.date].filter(Boolean).join(' — ');
+        }
+        return orig(tab, rec);
+      };
+    })(SLFBoard.recLabel);
+  }
 })();
