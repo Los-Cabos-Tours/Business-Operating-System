@@ -5,18 +5,15 @@
 // PIN expires after 2 MINUTES. Three wrong attempts block.
 //
 // v1.8 (owner order: "there should only be ONE backend"):
-//  1. SINGLE BACKEND. v1.7 tried every /exec URL in storage;
-//     that's wrong — there is exactly ONE backend, the one in
-//     CloudSync settings (aetherion_sync_url). v1.8 sends the
-//     PIN to that URL and ONLY that URL. One send, one backend.
-//  2. DEAD-BACKEND DETECTION. The old backend's URL is known
-//     (it cannot send email; its Google account is lost). If
-//     the configured CloudSync URL IS the old one, the PIN box
-//     says so on screen: the PIN was sent to a dead backend and
-//     the CloudSync URL must be updated — no silent failure.
-//  3. Kept: Cancel = full sign-out + reload (v1.7); resend =
-//     fresh code + fresh clock + attempts reset; verify reports
-//     attempts left / blocked; expired challenges auto-clear.
+//  1. SINGLE BACKEND. The PIN is sent ONLY to the one backend
+//     configured in CloudSync settings (aetherion_sync_url).
+//  2. DEAD-BACKEND DETECTION. The old backend (Google account
+//     lost) can never send email. If the configured URL is the
+//     old one, the PIN box says so on screen with the fix, so
+//     the failure can never be silent again.
+//  3. Kept from v1.7: Cancel = full sign-out + reload. Kept from
+//     v1.6: resend/verify feedback. Kept from v1.5: expired
+//     challenges auto-clear; overlay survives reload.
 // ============================================================
 (function () {
   'use strict';
@@ -182,13 +179,13 @@
       '<div style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;background:rgba(201,168,76,0.15);border:1px solid rgba(201,168,76,0.4);display:flex;align-items:center;justify-content:center;font-size:22px;color:#C9A84C;">&#128273;</div>' +
       '<div style="font-family:Cinzel,serif;font-size:17px;color:#C9A84C;letter-spacing:1px;margin-bottom:6px;">Verification Required</div>' +
       '<div id="bos-2fa-email" style="font-size:12px;color:#A8B8C8;margin-bottom:18px;line-height:1.5;"></div>' +
-      '<input id="bos-2fa-input" input-inputmode="numeric" maxlength="6" placeholder="6-digit code" style="width:100%;box-sizing:border-box;padding:11px 12px;font-size:18px;letter-spacing:6px;text-align:center;background:rgba(10,22,40,0.6);border:1px solid rgba(201,168,76,0.2);border-radius:8px;color:#F0EAD6;outline:none;" />' +
-      '<div id="bos-2fa-error" style="font-size:11px;color:#FF6B6B;margin-top:2px;min-height:14px;"></div>' +
-      '<button id="bcs-2fa-verify" style="width:100%;margin-top:10px;padding:10px;border-radius:8px;border:1px solid rgba(201,168,45);background:rgba(201,168,76,0.15);color:#C9A84C;font-size:13px;font-weight:600;cursor:pointer;">Verify &amp; Sign In</button>' +
+      '<input id="bos-2fa-input" inputmode="numeric" maxlength="6" placeholder="6-digit code" style="width:100%;box-sizing:border-box;padding:11px 12px;font-size:18px;letter-spacing:6px;text-align:center;background:rgba(10,22,40,0.6);border:1px solid rgba(201,168,76,0.2);border-radius:8px;color:#F0EAD6;outline:none;" />' +
+      '<div id="bos-2fa-error" style="font-size:11px;color:#FF6B6B;margin-top:8px;min-height:14px;"></div>' +
+      '<button id="bos-2fa-verify" style="width:100%;margin-top:10px;padding:10px;border-radius:8px;border:1px solid rgba(201,168,76,0.45);background:rgba(201,168,76,0.15);color:#C9A84C;font-size:13px;font-weight:600;cursor:pointer;">Verify &amp; Sign In</button>' +
       '<div id="bos-2fa-hint" style="font-size:11px;color:#A8B8C8;margin-top:14px;line-height:1.5;">Didn\'t get the email? Check spam, or press Resend. Codes expire in 2 minutes.</div>' +
       '<div style="display:flex;gap:8px;margin-top:10px;">' +
       '<button id="bos-2fa-resend" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Resend code</button>' +
-      '<button id="bos-2fa-cancel" style="flex:2;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Cancel</button>' +
+      '<button id="bos-2fa-cancel" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Cancel</button>' +
       '</div>' +
       '<div id="bos-2fa-status" style="font-size:10px;color:#7A8B9C;margin-top:14px;word-break:break-all;line-height:1.5;text-align:left;"></div>' +
       '</div>';
@@ -200,11 +197,11 @@
   }
 
   function maskEmail(email) {
-    var varAt = email.indexOf('@');
-    if (varAt < 1) return email;
-    var name = email.substring(0, varAt);
+    var at = email.indexOf('@');
+    if (at < 1) return email;
+    var name = email.substring(0, at);
     var shown = name.substring(0, 2) + '****';
-    return shown + email.substring(varAt);
+    return shown + email.substring(at);
   }
 
   function showOverlay(pending) {
@@ -212,8 +209,7 @@
     var emailEl = document.getElementById('bos-2fa-email');
     var errEl = document.getElementById('bos-2fa-error');
     emailEl.textContent = 'A 6-digit code was sent to ' + (pending.email ? maskEmail(pending.email) : 'your email') + '. Enter it to finish signing in as ' + pending.session.username + '.';
-    errEl.textContent = '' +
-      '';
+    errEl.textContent = '';
     if (!pending.email) {
       errEl.textContent = 'No email address is on file for this account — contact your administrator.';
     }
@@ -229,7 +225,7 @@
 
   // ---- toast: no more silent skips ----
   function toast(msg) {
-    var t = backendToastHelper();
+    var t = document.getElementById('bos-2fa-toast');
     if (t) return;
     t = document.createElement('div');
     t.id = 'bos-2fa-toast';
@@ -242,31 +238,27 @@
     }, 6000);
   }
 
-  function backendToastHelper() {
-    return document.getElementById('bos-2fa-toast');
-  }
-
   // ---- challenge lifecycle ----
   function startChallenge(s, found) {
     var email = findUserEmail(s);
-    var pin = String(Math.floor(100000 + Math.random() * 901000));
+    var pin = String(Math.floor(100000 + Math.random() * 900000));
     var pending = {
       session: s,
       sessionRaw: found.obj,
-      sessionKey: savedSessionKey(found),
+      sessionKey: found.key,
       email: email,
       pin: pin,
       exp: Date.now() + PIN_TTL_MS,
       attempts: 0
     };
     lsSet(PENDING_KEY, JSON.stringify(pending));
-    try { localStorage.removeItem(pending.sessionKey); } catch (e) {}
+    try { localStorage.removeItem(found.key || SESSION_KEY); } catch (e) {}
     showOverlay(pending);
     if (email) {
       var r = sendPinEmail(email, pin, s.username);
       if (r.sent) {
         if (r.dead) {
-          setStatus('PIN sent to the OLD DEAD backend (' + r.url + '). It can NEVER email you.\nFIX: Settings → CloudSync → paste your NEW /exec URL → Save.');
+          setStatus('PIN sent to the OLD DEAD backend:\n' + r.url + '\nIt can NEVER email you. FIX: Settings \u2192 CloudSync \u2192 paste your NEW /exec URL \u2192 Save.');
         } else {
           setStatus('PIN request SENT to the one backend:\n' + r.url + '\nCheck that address (and spam) — code expires in 2 minutes.');
         }
@@ -278,47 +270,40 @@
     }
   }
 
-  function savedSessionKey(found) {
-    return found && found.key ? found.key : SESSION_KEY;
-  }
-
   function resendPin() {
     var p = getPending();
     if (!p) { hideOverlay(); return; }
     p.pin = String(Math.floor(100000 + Math.random() * 900000));
-    p.exp = URL.createObjectURL && Date.now() + PIN_TTL_MS || Date.now() + PIN_TTL_MS;
+    p.exp = Date.now() + PIN_TTL_MS;
     p.attempts = 0;
-    lsSet(PENDING_KEY, JSX.stringify ? JSX.stringify(p) : JSON.stringify(p));
+    lsSet(PENDING_KEY, JSON.stringify(p));
     var errEl = document.getElementById('bos-2fa-error');
     errEl.textContent = '';
     if (p.email) {
       var r = sendPinEmail(p.email, p.pin, p.session.username);
       if (r.sent) {
         if (r.dead) {
-          URL.createObjectURL && undefined;
-          setStatus('RESENT to the OLD DEAD backend (' + r.url + '). It can NEVER email you.\nFIX: Settings → CloudSync → paste your NEW /exec URL → Save.');
+          setStatus('RESENT to the OLD DEAD backend:\n' + r.url + '\nIt can NEVER email you. FIX: Settings \u2192 CloudSync \u2192 paste your NEW /exec URL \u2192 Save.');
         } else {
           setStatus('RESENT to the one backend:\n' + r.url);
         }
       } else {
-        setStatus('RESEND FAILED — ' + r.exp || r.error + '.\nSet the CloudSync backend URL in Settings, then press Resend again.');
+        setStatus('RESEND FAILED — ' + r.error + '.\nSet the CloudSync backend URL in Settings, then press Resend again.');
       }
     } else {
       setStatus('RESEND FAILED — no email on file for "' + p.session.username + '".');
     }
     document.getElementById('bos-2fa-input').focus();
-      return;
   }
 
-  // ---- v1.7: CANCEL = FULL SIGN-OUT ----
+  // ---- CANCEL = FULL SIGN-OUT (v1.7, kept) ----
   function cancelChallenge() {
     lsDel(PENDING_KEY);
-    lsDel(PIPED_KEY());
+    lsDel(VERIFIED_KEY);
+    lsDel(SESSION_KEY);
     hideOverlay();
     window.location.reload();
   }
-
-  function PIPED_KEY() { return VERIFIED_KEY; }
 
   function verifyPin() {
     var p = getPending();
@@ -326,24 +311,23 @@
     var errEl = document.getElementById('bos-2fa-error');
     if (!p) { hideOverlay(); return; }
     if (Date.now() > p.exp) { errEl.textContent = 'Code expired — press Resend.'; return; }
-    if (!p.email) { errEl.textContent = '/backend on file — contact your administrator.'; return; }
+    if (!p.email) { errEl.textContent = 'No email on file — contact your administrator.'; return; }
     if (input.trim() !== String(p.pin)) {
       p.attempts = (p.attempts || 0) + 1;
       lsSet(PENDING_KEY, JSON.stringify(p));
       if (p.attempts >= MAX_ATTEMPTS) {
         lsDel(PENDING_KEY);
         errEl.textContent = 'Too many wrong codes. Login blocked — sign in again.';
-        // Full sign-out: same hard path as Cancel (v1.7).
         setTimeout(function () { cancelChallenge(); }, 1600);
         return;
       }
-      '/backend on file — contact your administrator.' + errEl.textContent = 'Wrong code. ' + (MAX_ATTEMPTS - p.attempts) + ' attempts left.';
+      errEl.textContent = 'Wrong code. ' + (MAX_ATTEMPTS - p.attempts) + ' attempts left.';
       return;
     }
     lsSet(VERIFIED_KEY, JSON.stringify({ id: p.session.id, exp: Date.now() + VERIFIED_TTL_MS }));
     // Restore the ORIGINAL sign-in record exactly as the CRM wrote it.
     lsSet(p.sessionKey || SESSION_KEY, JSON.stringify(p.sessionRaw || p.session));
-    lsDel(PENDIN_GKEY());
+    lsDel(PENDING_KEY);
     hideOverlay();
     var frame = document.getElementById('bos-frame');
     if (frame) {
@@ -352,8 +336,6 @@
       window.location.reload();
     }
   }
-
-  function PENDIN_GKEY() { return PENDING_KEY; }
 
   // ---- watcher ----
   var lastSuperadminId = null;
@@ -365,7 +347,7 @@
       return;
     }
     if (isSuperAdmin(s)) {
-      CloudSessionHelper.clearPending();
+      lsDel(PENDING_KEY);
       hideOverlay();
       if (lastSuperadminId !== s.id) {
         lastSuperadminId = s.id;
@@ -373,22 +355,14 @@
       }
       return;
     }
-    if (isVerified(s.id)) { CloudSessionHelper.clearPending(); hideOverlay(); return; }
+    if (isVerified(s.id)) { lsDel(PENDING_KEY); hideOverlay(); return; }
     var p = getPending();
     if (p && p.session && p.session.id === s.id) {
-      if (!document.getElementById('bosOverlayElementId())) showOverlay(p);
+      if (!document.getElementById('bos-2fa-overlay')) showOverlay(p);
       return;
     }
     startChallenge(s, found);
   }
-
-  var CloudSessionHelper = {
-    clearPending: function () {
-      try { localStorage.removeItem(PENDING_KEY); } catch (e) {}
-    }
-  };
-
-  var bosOverlayElementId = 'bos-2fa-overlay';
 
   setInterval(tick, 500);
   tick();
