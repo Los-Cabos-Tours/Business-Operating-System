@@ -1,4 +1,4 @@
-// SLF Board main controller (split 5/5) v3
+// SLF Board main controller (split 5/5) v4
 'use strict';
 (function () {
   function displayLine(tab, r) {
@@ -35,6 +35,7 @@
       return;
     }
     document.getElementById('view-title').textContent = 'Client Dashboard';
+    var stageSelect = SLFBoard.panel.stageSelectHtml ? SLFBoard.panel.stageSelectHtml(c) : '';
     v.innerHTML =
       '<style>' + SLFBoard.css() + '</style>' +
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
@@ -45,6 +46,7 @@
       '<button class="bact ghost" onclick="SLFBoard.exportClient()">Export</button>' +
       '<button class="bact danger" onclick="SLFBoard.deleteConfirm()">Delete</button>' +
       '</div>' +
+      (stageSelect ? '<div class="frow" style="margin:0 0 14px 0;">' + stageSelect + '</div>' : '') +
       '<div class="bwrap">' +
       '<div class="bleft">' + SLFBoard.panel.infoPanel(c) + '</div>' +
       '<div class="bright">' +
@@ -86,10 +88,6 @@
     render();
   };
 
-  // Save Profile v2: custom fields are the ONLY editable fields
-  // (rendered by the designer layout); base email/phone are no
-  // longer fixed rows, so PRESERVE them instead of blanking.
-  // (saveProfile itself lives in slf-notes-patch.js v2+.)
   function flash(msg) {
     var el = document.getElementById('pe-flash');
     if (!el) return;
