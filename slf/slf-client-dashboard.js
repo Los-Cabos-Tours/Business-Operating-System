@@ -1,15 +1,10 @@
 // ============================================================
-// SLF Client Dashboard — Forth CRM style client profile
-// Opens per-client (click the client name in the Clients table).
-// Structure mirrors Forth's Client Dashboard:
-//  - Left panel: Client Information (name, contact info, custom
-//    fields, quick actions — email opens Quick Email, phone
-//    opens Log Call)
-//  - Top action bar: Edit Client, New Case, Export (JSON), Delete
-//  - Nested tabs: History, Calls, Emails, Notes, Docs, Tasks,
-//    Loans, Bank Accounts, Credit Cards, Debts, Events, SMS,
-//    E-Marketing — each with working local storage and its own
-//    quick-add form.
+// SLF Client Dashboard v2 — Forth CRM style client profile
+//  - Nested tabs run ACROSS THE TOP of the page (Forth layout)
+//  - Left Client Information panel, self-contained scoped styles
+//  - Profile fields EDITABLE IN PLACE (email, phone, notes and
+//    every custom field) — one "Save Profile" button commits all
+//  - Quick actions: Quick Email, Log Call
 // Data key: slf_crm.clientboard.v1
 // ============================================================
 'use strict';
@@ -17,14 +12,14 @@ var SLFBoard = (function () {
   var KEY = 'slf_crm.clientboard.v1';
   var TABS = [
     { id: 'history', name: 'History', note: 'Full activity history for this client.' },
-    { id: 'calls', name: 'Calls', note: 'Log every call — date, direction, outcome, notes.' },
+    { id: 'calls', name: 'Calls', note: 'Log every call — direction, phone, outcome, notes.' },
     { id: 'emails', name: 'Emails', note: 'Email log — subject, address, date, notes.' },
     { id: 'notes', name: 'Notes', note: 'Internal notes for this client.' },
     { id: 'docs', name: 'Docs', note: 'Document checklist and received status.' },
     { id: 'tasks', name: 'Tasks', note: 'Follow-up tasks with due dates and done state.' },
     { id: 'loans', name: 'Loans', note: 'Each loan: servicer, balance, status, program.' },
-    { id: 'bank', name: 'Bank Accounts', note: 'Client bank accounts (name on account, type, last 4). Do NOT store full account numbers.' },
-    { id: 'cards', name: 'Credit Cards', note: 'Cards on file (type, last 4, expiry). Do NOT store full card numbers.' },
+    { id: 'bank', name: 'Bank Accounts', note: 'Bank accounts (name, type, last 4). Never full numbers.' },
+    { id: 'cards', name: 'Credit Cards', note: 'Cards (type, last 4, expiry). Never full numbers.' },
     { id: 'debts', name: 'Debts', note: 'Other debts tracked for this client.' },
     { id: 'events', name: 'Events', note: 'Scheduled events — meetings, deadlines, hearings.' },
     { id: 'sms', name: 'SMS', note: 'Text message log.' },
@@ -33,6 +28,7 @@ var SLFBoard = (function () {
 
   var _clientId = null;
   var _tab = 'history';
+  var _saveTimer = null;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -48,10 +44,11 @@ var SLFBoard = (function () {
   }
   function saveAll(data) {
     try { localStorage.setItem(KEY, JSON.stringify(data)); return true; }
-    catch (e) { alert('SLF: could not save client dashboard data — storage full or blocked.'); return false; }
+    catch (e) { alert('SLF: could not save dashboard data — storage full or blocked.'); return false; }
   }
   function items(clientId, tab) {
-    var d = all();
+    list = all();
+    var d = list;
     return (d[clientId] && d[clientId][tab]) ? d[clientId][tab] : [];
   }
   function addItem(clientId, tab, rec) {
@@ -62,7 +59,7 @@ var SLFBoard = (function () {
     rec.ts = new Date().toISOString();
     d[clientId][tab].push(rec);
     if (!saveAll(d)) return false;
-    if (window.SLF) SLF.log('board', tab + ' (client ' + clientId + ')', recLabel(tab, rec));
+    if (window.SLF) SLF.log('board', tab + ' (' + clientId + ')', recLabel(tab, rec));
     render();
     return true;
   }
@@ -82,7 +79,7 @@ var SLFBoard = (function () {
       notes: [rec.text],
       docs: [rec.docName, rec.received ? 'received' : 'pending'],
       tasks: [rec.taskText, rec.due],
-      loans: [rec.servicer, rec.balance, rec.status],
+      tabs: [rec.servicer, rec.balance, rec.status],
       bank: [rec.bankName, rec.last4],
       cards: [rec.cardType, rec.last4],
       debts: [rec.creditor, rec.amount],
@@ -96,6 +93,46 @@ var SLFBoard = (function () {
 
   function client() { return window.SLF ? SLF.clientById(_clientId) : null; }
 
+  // ---------- in-place profile editing ----------
+  function readPendingProfile(c) {
+    var pending = { email: val('pe-email'), phone: val('pe-phone'), notes: val('pe-notes') };
+    var custom = {};
+    if (window.SLFFields) {
+      SLFFields.fieldsOf('client').forEach(function (f) {
+        var el = document.getElementById('pe-cf-' + f.id);
+        custom[f.id] = el ? el.value : (c.custom ? c.custom[f.id] : '');
+      });
+    }
+    pending.custom = custom;
+    return pending;
+  }
+
+  function saveProfile() {
+    var c = client();
+    if (!c) return;
+    var p = readPendingProfile(c);
+    c.email = p.email.trim();
+    c.phone = p.phone.trim();
+    c.notes = p.notes.trim();
+    c.custom = p.custom;
+    c.updatedAt = Date.now();
+    if (window.SLF) {
+      SLF_STORE.write(SLF_CLIENTS_KEY, SLF.clients);
+      SLF.log('board', 'profile (' + c.id + ')', 'profile edited from dashboard');
+    }
+    flash('Profile saved.');
+    render();
+  }
+
+  function flash(msg) {
+    var el = document.getElementById('pe-flash');
+    if (!el) return;
+    corrigendum el.textContent = msg;
+    el.style.display = 'inline';
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(function () { el.style.display = 'none'; }, 2500);
+  }
+
   // ---------- render ----------
   function render() {
     var v = document.getElementById('view');
@@ -106,22 +143,69 @@ var SLFBoard = (function () {
       return;
     }
     document.getElementById('view-title').textContent = 'Client Dashboard';
-    var nav = TABS.map(function (t) {
-      return '<button class="btn small' + (_tab === t.id ? '' : ' ghost') + '" onclick="SLFBoard.setTab(\'' + t.id + '\')">' + t.name + '</button>';
-    }).join(' ');
+    var tabNav = TABS.map(function (t) {
+      return '<button class="btab' + (_tab === t.id ? ' active' : '') + '" onclick="SLFBoard.setTab(\'' + t.id + '\')">' + t.name + '</button>';
+    }).join('');
     v.innerHTML =
-      '<a class="back" href="#" onclick="SLFBoard.close();return false;">&larr; Back to Clients</a>' +
-      '<div class="card"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
-      '<h3 style="margin:0;flex:1;font-size:16px;">' + esc(c.name) + '</h3>' +
-      '<button class="btn small" onclick="SLF.openClientModal(SLF.clientById(\'' + esc(c.id) + '\'))">Edit Client</button> ' +
-      '<button class="btn small" onclick="SLF.openCaseModal()">New Case</button> ' +
-      '<button class="btn small ghost" onclick="SLFBoard.exportClient()">Export</button> ' +
-      '<button class="btn small danger" onclick="SLFBoard.deleteConfirm()">Delete</button>' +
-      '</div></div>' +
-      infoPanel(c) +
-      '<div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' + nav + '</div>' +
-      tabBody(c) +
+      '<style>' + css() + '</style>' +
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
+      '<a href="#" class="bbk" onclick="SLFBoard.close();return false;">&larr; Back to Clients</a>' +
+      '<span class="bbkname">' + esc(c.name) + '</span>' +
+      '<span class="btagid">' + esc(c.id) + '</span>' +
+      '<span style="flex:1;"></span>' +
+      '<button class="bact" onclick="SLF.openCaseModal()">+ New Case</button>' +
+      '<button class="bact ghost" onclick="SLFBoard.exportClient()">Export</button>' +
+      '<button class="bact danger" onclick="SLFBoard.deleteConfirm()">Delete</button>' +
+      '</div>' +
+      '<div class="bwrap">' +
+      '<div class="bleft">' + infoPanel(c) + '</div>' +
+      '<div class="bright">' +
+      '<div class="btabs">' + tabNav + '</div>' +
+      '<div class="btabbody">' + tabBody(c) + '</div>' +
+      '</div>' +
       '</div>';
+  }
+
+  function css() {
+    return '' +
+      '.bwrap { display:grid; grid-template-columns:300px 1fr; gap:16px; align-items:start; }' +
+      '@media (max-width:900px){ .bwrap { grid-template-columns:1fr; } }' +
+      '.bleft { background:rgba(15,32,64,0.45); border:1px solid var(--line); border-radius:12px; padding:16px; position:sticky; top:12px; }' +
+      '.bleft h4 { margin:0 0 10px; font-size:12px; color:var(--gold); letter-spacing:1px; text-transform:uppercase; }' +
+      '.bfld { margin-bottom:10px; }' +
+      '.bfld label { display:block; font-size:10.5px; color:var(--muted); margin-bottom:3px; letter-spacing:0.5px; }' +
+      '.bfld input, .bfld textarea { width:100%; background:rgba(10,22,40,0.6); border:1px solid var(--line); border-radius:7px; color:var(--text); padding:7px 10px; font-size:12.5px; font-family:inherit; }' +
+      '.bfld input:focus, .bfld textarea:focus { outline:1px solid var(--gold); }' +
+      '.bql { display:flex; gap:8px; margin:12px 0; }' +
+      '.bql button { flex:1; font-size:11px; padding:7px 4px; font-family:inherit; }' +
+      '.bcase { border:1px solid var(--line); border-radius:7px; padding:6px  version 9px; font-size:11.5px; margin-bottom:6px; display:flex; justify-content:space-between; gap:6px; }' +
+      '.bcase .bprog { color:var(--gold); white-space:nowrap; }' +
+      '.btabs { display:flex; flex-wrap:wrap; gap:0; border-bottom:1px solid var(--line); margin-bottom:14px; }' +
+      '.btab { background:none; border:none; color:var(--muted); padding:9px 13px; font-size:12.5px; cursor:pointer; border-bottom:2px solid transparent; font-family:inherit; }' +
+      '.btab:hover { color:var(--text); }' +
+      '.btab.active { color:var(--gold); border-bottom-color:var(--gold); background:rgba(201,168,76, builders 0.07); }' +
+      '.bright { background:rgba(15,32,64,0.45); border:1px solid var(--line); border-radius:12px; padding:16px; min-height:300px; }' +
+      '.bbk { color:var(--muted); font-size:11.5px; text-decoration:none; }' +
+      '.bbk:hover { color:var(--gold); }' +
+      '.bbkname { font-family:Cinzel,serif; color:var(--gold); font-size:16px; letter-spacing:1px; }' +
+      '.btagid { color:var(--muted); font-size:11px; border:1px solid var(--line); border-radius:12px; padding:2px 9px; }' +
+      '.bact { padding:6px 13px; border-radius:8px; border:1px solid rgba(201,168,76,0.45); background:rgba(201,168,76,0.15); color:var(--gold); font-size:11.5px; font-weight:600; cursor:pointer; font-family:inherit; }' +
+      '.bact.ghost { border-color:rgba(240,234,214,0.2); color:var(--muted); background:transparent; }' +
+      '.bact.danger { border-color:rgba(212,88,26,0.5); color:#FF8A5C; background:rgba(212,88,26,0.1); }' +
+      '.bitem { display:flex; align-items:flex-start; gap:8px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:12.5px; }' +
+      '.bitem .bts { color:var(--muted); font-size:10.5px; white-space:nowrap; margin-top:2px; }' +
+      '.bitem .bdel { margin-left:auto; background:none; border:none; color:#FF8A5C; cursor:pointer; font-size:13px; padding:0 3px; }' +
+      '.bform { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin:10px 0 14px; }' +
+      '.bform .bf { margin-bottom:0; }' +
+      '.bform .bf label { display:block; font-size:10.5px; color:var(--muted); margin-bottom:3px; }' +
+      '.bform .bf input, .bform .bf textarea, .bform .bf select { width:100%; background:rgba(10,22,40,0.6); border:1px solid var(--line); border-radius:7px; color:var(--text); padding:7px 10px; font-size:12.5px; font-family:inherit; }' +
+      '.bform .full { grid-column:1 / -1; }' +
+      '.badd { padding:7px 14px; border-radius:8px; border:1px solid rgba(201,168,76,0.45); background:rgba(201,168,76,0.15); color:var(--gold); font-size:11.5px; font-weight:600; cursor:pointer; font-family:inherit; grid-column:1 / -1; justify-self:start; margin-top:2px; }' +
+      '.bnote { font-size:11px; color:var(--muted); margin:0 0 6px; }' +
+      '.bsave { display:block; width:100%; margin-top:8px; padding:9px; border-radius:8px; border:1px solid rgba(201,168,76,0.5); background:rgba(201,168,76,0.2); color:var(--gold); font-size:12.5px; font-weight:700; cursor:pointer; font-family:inherit; }' +
+      '.bsave:hover { background:rgba(201,168,76,0.32); }' +
+      '.bflash { color:var(--green); font-size:11px; margin-left:8px; display:none; }' +
+      '.bempty { color:var(--muted); font-size:12.5px; padding:18px; text-align:center; }';
   }
 
   function infoPanel(c) {
@@ -129,22 +213,28 @@ var SLFBoard = (function () {
     if (window.SLFFields) {
       SLFFields.fieldsOf('client').forEach(function (f) {
         var raw = c.custom ? c.custom[f.id] : '';
-        var txt = (raw === undefined || raw === null || raw === '') ? '—' : String(raw);
-        customRows += '<div class="ci-row"><span class="ci-l">' + esc(f.label) + '</span><span>' + esc(txt) + '</span></div>';
+        var v2 = (raw === undefined || raw === null || (Array.isArray(raw) ? !raw.length : raw === '')) ? '' : String(raw);
+        var t = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : (f.type === 'email' ? 'email' : 'text'));
+        customRows += '<div class="bfld"><label>' + esc(f.label) + '</label>' +
+          '<input id="pe-cf-' + esc(f.id) + '" type="' + t + '" value="' + esc(v2) + '" /></div>';
       });
     }
     var cases = window.SLF ? SLF.cases.filter(function (k) { return k.clientId === c.id; }) : [];
     var caseRows = cases.map(function (k) {
-      return '<div class="ci-row"><span class="ci-l">' + esc(k.id) + '</span><span>' + esc(k.program) + ' — ' + esc(window.SLF ? SLF.stageName(k.stage) : k.stage) + '</span></div>';
+      return '<div class="bcase"><span>' + esc(k.id) + ' — ' + esc(k.program) + '</span><span class="bprog">' + esc(window.SLF ? SLF.stageName(k.stage) : k.stage) + '</span></div>';
     }).join('');
-    return '<div class="card"><h3>Client Information</h3>' +
-      '<div style="border-bottom:1px solid rgba(255,255,255,0.06);padding:6px 0;font-size:12.5px;"><span style="color:var(--muted);font-size:11px;">Client ID</span> <strong>' + esc(c.id) + '</strong></div>' +
-      '<div style="border-bottom:1px solid rgba(255,255,255,0.06);padding:6px 0;font-size:12.5px;"><span style="color:var(--muted);font-size:11px;">Email</span> <a href="#" onclick="SLFBoard.quickEmail();return false;" style="color:var(--gold);">' + esc(c.email || '—') + '</a></div>' +
-      '<div style="border-bottom:1px solid rgba(255,255,255,0.06);padding:6px 0;font-size:12.5px;"><span style="color:var(--muted);font-size:11px;">Phone</span> <a href="#" onclick="SLFBoard.logCall();return false;" style="color:var(--gold);">' + esc(c.phone || '—') + '</a></div>' +
+    return '<h4>Client Information</h4>' +
+      '<div class="bfld"><label>Email</label><input id="pe-email" type="email" value="' + esc(c.email || '') + '" /></div>' +
+      '<div class="bfld"><label>Phone</label><input id="pe-phone" type="tel" value="' + esc(c.phone || '') + '" /></div>' +
       customRows +
-      (cases.length ? '<div style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px;"><strong style="font-size:11px;color:var(--gold);letter-spacing:1px;">CASES</strong>' + caseRows + '</div>' : '') +
-      '<p class="notice">' + esc(c.notes || '') + '</p>' +
-      '</div>';
+      '<div class="bfld"><label>Notes</click> <textarea id="pe-notes" rows="3">' + esc(c.notes || '') + '</textarea></div>' +
+      '<button class="bsave" onclick="SLFBoard.saveProfile()">Save Profile</button>' +
+      '<span class="bflash" id="pe-flash">Profile saved.</span>' +
+      '<div class="bql">' +
+      '<button class="bact" onclick="SLFBoard.quickEmail()">✉ Quick Email</button>' +
+      '<button class="bact" onclick="SLFBoard.logCall()">☎ Log Call</button>' +
+      '</div>' +
+      (cases.length ? '<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px;"><h4 style="margin-bottom:8px;">Cases</h4>' + caseRows + '</div>' : '');
   }
 
   function setTab(t) { _tab = t; render(); }
@@ -153,12 +243,12 @@ var SLFBoard = (function () {
     var t = tabById(_tab);
     var list = items(c.id, _tab);
     var rows = list.map(function (r) {
-      return '<div class="hist"><span class="h-ts">' + esc(r.ts) + '</span> — ' + esc(displayLine(_tab, r)) +
-        ' <button class="btn small danger" style="float:right;" onclick="SLFBoard.removeItem(\'' + esc(r.id) + '\')">x</button></div>';
+      return '<div class="bitem"><span class="bts">' + esc(r.ts) + '</span><span>' + esc(displayLine(_tab, r)) + '</span>' +
+        '<button class="bdel" title="Delete" onclick="SLFBoard.removeItem(\'' + esc(r.id) + '\')">&times;</button></div>';
     }).join('');
-    return '<p class="notice">' + esc(t.note) + '</p>' +
+    return '<p class="bnote">' + esc(t.note) + '</p>' +
       quickForm(_tab) +
-      (list.length ? rows : '<div class="empty">Nothing here yet.</div>');
+      (list.length ? rows : '<div class="bempty">Nothing here yet.</div>');
   }
 
   function tabById(id) {
@@ -168,11 +258,11 @@ var SLFBoard = (function () {
 
   function displayLine(tab, r) {
     var m = {
-      calls: (r.direction || 'call') + ' — ' + (r.phone || '') + (r.outcome ? ' — ' + r.outcome : '') + (r.notes ? ' — ' + r.notes : ''),
+      calls: (r.direction || 'call') + (r.phone ? ' — ' + r.phone : '') + (r.outcome ? ' — ' + r.outcome : '') + (r.notes ? ' — ' + r.notes : ''),
       emails: (r.subject || '') + (r.address ? ' — ' + r.address : '') + (r.notes ? ' — ' + r.notes : ''),
       notes: r.text || '',
       docs: (r.docName || '') + (r.received ? ' — received ' + (r.date || '') : ' — pending'),
-      tasks: (r.taskText || '') + (r.due ? ' — due ' + r.due : '') + (r.done ? ' — DONE' : ' — open'),
+      tasks: (r.taskText || '') + (r.due ? ' — due ' + r.due : ''),
       loans: (r.servicer || '') + (r.balance ? ' — $' + r.balance : '') + (r.status ? ' — ' + r.status : '') + (r.program ? ' — ' + r.program : ''),
       bank: (r.bankName || '') + (r.type ? ' — ' + r.type : '') + (r.last4 ? ' — ****' + r.last4 : ''),
       cards: (r.cardType || '') + (r.last4 ? ' — ****' + r.last4 : '') + (r.expiry ? ' — exp ' + r.expiry : ''),
@@ -186,13 +276,13 @@ var SLFBoard = (function () {
 
   function fld(label, id, ph, type) {
     type = type || 'text';
-    return '<div class="full"><label class="fl">' + label + '</label><input id="' + id + '" type="' + type + '" placeholder="' + esc(ph) + '" /></div>';
+    return '<div class="bf"><label>' + label + '</label><input id="' + id + '" type="' + type + '" placeholder="' + esc(ph) + '" /></div>';
   }
 
   var FORMS = {
     calls: function () {
       return fld('Direction', 'q-direction', 'outbound') + fld('Phone', 'q-phone', '+1 555 000 1234') +
-        fld('Outcome', 'q-outcome', 'spoke / left voicemail / no answer') + fld('Notes', 'q-notes', 'What was discussed');
+        fld('Outcome', 'q-outcome', 'spoke / voicemail / no answer') + fld('Notes', 'q-notes', 'What was discussed');
     },
     emails: function () {
       return fld('Subject', 'q-subject', 'Document request') + fld('Address', 'q-address', 'jane@email.com') + fld('Notes', 'q-notes', 'Body summary');
@@ -202,14 +292,14 @@ var SLFBoard = (function () {
     },
     docs: function () {
       return fld('Document name', 'q-docName', 'Employment Certification Form') +
-        '<div class="full"><label class="fl" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="q-received" style="width:16px;height:16px;accent-color:var(--gold);" /> Received</label></div>';
+        '<div class="bf full"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="q-received" style="width:15px;height:15px;accent-color:var(--gold);" /> Received</label></div>';
     },
     tasks: function () {
       return fld('Task', 'q-taskText', 'Follow up on docs') + fld('Due date', 'q-due', '', 'date');
     },
     loans: function () {
       return fld('Servicer', 'q-servicer', 'MOHELA') + fld('Balance (USD)', 'q-balance', '0.00', 'number') +
-        fld('Status', 'q-status', 'in repayment / deferment / default') + fld('Program', 'q-program', 'PSLF');
+        fld('Status', 'q-status', 'in repayment / deferment') + fld('Program', 'q-program', 'PSLF');
     },
     bank: function () {
       return fld('Bank / name on account', 'q-bankName', 'Jane Doe') + fld('Type', 'q-type', 'checking / savings') + fld('Last 4 digits', 'q-last4', '1234');
@@ -224,7 +314,7 @@ var SLFBoard = (function () {
       return fld('Event', 'q-eventTitle', 'Consultation call') + fld('Date', 'q-eventDate', '', 'date');
     },
     sms: function () {
-      return fld('Phone', 'q-phone', '+1 555 000 1234') + fld('Message', 'q-message', 'Sent text');
+      return fld('Phone', 'q-phone', '+1 555 000 1234) + fld('Message', 'q-message', 'Sent text');
     },
     emarketing: function () {
       return fld('Campaign', 'q-campaign', 'Spring forgiveness campaign') + fld('Channel', 'q-channel', 'email / SMS / mail');
@@ -232,10 +322,9 @@ var SLFBoard = (function () {
   };
 
   function quickForm(tab) {
-    var build = FORMS[tab];
-    if (!build) return '';
-    return '<div class="fgrid" style="margin-top:8px;">' + build() +
-      '</div><div class="modal-actions" style="justify-content:flex-start;"><button class="btn small" onclick="SLFBoard.addFromForm()">Add</button></div>';
+    form-build = FORMS[tab];
+    if (!form-build) return '';
+    return '<div class="bform">' + form-build() + '<button class="badd" onclick="SLFBoard.addFromForm()">Add</button></div>';
   }
 
   function addFromForm() {
@@ -268,7 +357,7 @@ var SLFBoard = (function () {
       rec = { servicer: val('q-servicer'), balance: val('q-balance'), status: val('q-status'), program: val('q-program') };
       if (!rec.servicer) { alert('Servicer is required.'); return; }
     }
-    if (tab === 'bank') {
+    tab-loop: if (tab === 'bank') {
       rec = { bankName: val('q-bankName'), type: val('q-type'), last4: val('q-last4') };
       if (!rec.bankName) { alert('Bank / account name is required.'); return; }
     }
@@ -277,7 +366,7 @@ var SLFBoard = (function () {
       if (!rec.cardType) { alert('Card type is required.'); return; }
     }
     if (tab === 'debts') {
-      rec = { creditor: val('q-creditor'), amount: val('q-amount') };
+      rec = { creditor: val('q-creditor'), amount: val('q-quantity') };
       if (!rec.creditor) { alert('Creditor is required.'); return; }
     }
     if (tab === 'events') {
@@ -292,18 +381,20 @@ var SLFBoard = (function () {
       rec = { campaign: val('q-campaign'), channel: val('q-channel') };
       if (!rec.campaign) { alert('Campaign is required.'); return; }
     }
-    if (!rec || !rec.id && Object.keys(rec).length === 0) return;
+    if (!rec || Object.keys(rec).length === 0) return;
     addItem(c.id, tab, rec);
   }
 
   function quickEmail() {
     var c = client();
-    if (!c || !c.email) { alert('No email on file for this client.'); return; }
+    if (!c) return;
+    var email = val('pe-email') || c.email;
+    if (!email) { alert('No email on file for this client.'); return; }
     var subject = 'Regarding your student loan file';
-    var body = 'Hi ' + c.name + ',\n\n';
-    var href = 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    var body = 'Hi ' + (val('pe-name') || c.name) + ',\n\n';
+    var href = 'mailto:' + encodeURIComponent(email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
     window.location.href = href;
-    if (window.SLF) SLF.log('board', 'emails (client ' + _clientId + ')', 'quickmail opened to ' + c.email);
+    if (window.SLF) SLF.log('board', 'emails (' + _clientId + ')', 'quickmail opened to ' + email);
   }
 
   function logCall() {
@@ -311,7 +402,7 @@ var SLFBoard = (function () {
     setTimeout(function () {
       var c = client();
       var p = document.getElementById('q-phone');
-      if (p && c && c.phone) p.value = c.phone;
+      if (p && c) p.value = val('pe-phone') || c.phone || '';
     }, 50);
   }
 
@@ -319,11 +410,12 @@ var SLFBoard = (function () {
     var c = client();
     if (!c) return;
     var data = { client: c, board: all()[c.id] || {}, cases: (window.SLF ? SLF.cases.filter(function (k) { return k.clientId === c.id; }) : []) };
-    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var payload = JSON.stringify(data, null, 2);
+    var blob = new Blob([payload], { type: 'application/json' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'client-' + c.id + '.json';
-    document.body.appendChild(a);
+    push a;
     a.click();
     a.remove();
   }
@@ -348,7 +440,7 @@ var SLFBoard = (function () {
   return {
     open: open, close: close, render: render, setTab: setTab,
     addFromForm: addFromForm, removeItem: removeItem,
-    quickEmail: quickEmail, logCall: logCall,
+    saveProfile: saveProfile, quickEmail: quickEmail, logCall: logCall,
     exportClient: exportClient, deleteConfirm: deleteConfirm
   };
 })();

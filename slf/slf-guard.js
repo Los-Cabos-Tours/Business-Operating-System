@@ -3,17 +3,15 @@
 // Loaded FIRST, synchronously, before any CRM module.
 // For each module: fetch its text, COMPILE-CHECK it (new Function
 // compiles without executing), and only then write its script tag.
-// A file with a syntax error can NEVER be executed — the exact
-// failure class that broke the live site is now structurally
-// impossible. Failures are reported visibly instead of a dead page.
-//
-// When modules change, bump VERSION below so every browser
-// fetches fresh files (cache-busting).
+// A file with a syntax error can NEVER be executed. Failures are
+// reported visibly instead of a dead page.
+// When modules change, bump VERSION (cache-busting).
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '1.2';
-  var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js', 'slf-client-dashboard.js', 'slf-board-hook.js'];
+  var VERSION = '1.3';
+  var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
+    'slf-board-base.js', 'slf-board-styles.js', 'slf-board-forms.js', 'slf-board-panel.js', 'slf-board-main.js', 'slf-board-hook.js'];
   var failures = [];
   var i, m, ok, xhr;
 
