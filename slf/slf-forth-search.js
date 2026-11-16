@@ -1,39 +1,42 @@
 // Forth clone — Contact Search nested tab (magnifying glass).
 // Owner request (this session): Contact Search must be a nested
 // TAB with a magnifying glass icon, and it must search WITHOUT
-// leaving the client profile. This module adds a magnifying-glass
-// tab to the nested strip whose workspace searches every record
-// stored for THIS contact across all tabs (history, calls,
-// emails, notes, docs, tasks, events, sms, emarketing, cards,
-// bank, debts, loans, lenders, servicing, alerts, budget) and
-// shows the matching lines, live, as you type.
-//
-// Label: ICON ONLY — just the magnifying glass, no "Search" text.
+// leaving the client profile. Clicking the tab opens the search
+// workspace IN the tab body (not a popup) and the cursor goes
+// straight into the typing box.
+// v2: the tab label is a REAL inline-SVG magnifying glass, not
+// an emoji — the emoji glyph rendered invisibly on some machines
+// (owner reported the tab could not be seen). SVG renders on
+// every platform. Clicking it shows the search input inline in
+// the tab workspace; type and results appear live, all without
+// leaving the client record.
 //
 // Also per owner order: the duplicate Budget strip button is
 // REMOVED (the Budget Analysis action in the action bar opens
-// the same budget workspace — the tab appears exactly once, as
-// an action, not as a strip tab). Budget data hooks and storage
-// are untouched.
+// the same budget workspace). Budget data hooks and storage are
+// untouched.
 'use strict';
 (function () {
   if (!window.SLFBoard || !SLFBoard.TABS) return;
 
   // ---- 1. Remove the duplicate Budget strip tab ----
-  // The Budget Analysis action (slf-forth-nav.js) opens the
-  // budget workspace via setTab('budget'), so the data hooks
-  // stay registered — only the strip button is removed.
   for (var i = SLFBoard.TABS.length - 1; i >= 0; i--) {
     if (SLFBoard.TABS[i].id === 'budget') SLFBoard.TABS.splice(i, 1);
   }
 
-  // ---- 2. Add the Search tab (magnifying glass, icon only) ----
-  SLFBoard.TABS.push({ id: 'search', name: '🔍', note: 'Search this contact\'s records without leaving the profile.' });
+  // ---- 2. Add the Search tab (inline-SVG magnifying glass) ----
+  // name is the icon markup; the strip renders it as-is. An
+  // accessible aria-label keeps it usable for screen readers.
+  SLFBoard.TABS.push({
+    id: 'search',
+    name: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-label="Search" style="vertical-align:middle;"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>',
+    note: 'Search this contact\'s records without leaving the profile.',
+    raw: true
+  });
 
   var SEARCHABLE = ['history', 'calls', 'emails', 'notes', 'emarketing', 'sms', 'docs', 'events', 'tasks', 'alerts', 'cards', 'bank', 'debts', 'loans', 'lenders', 'servicing', 'budget'];
 
   function searchHtml(c) {
-    var esc = SLFBoard.esc;
     return '<div class="bform" style="margin-bottom:10px;">' +
       '<input id="contact-search-input" placeholder="Search this contact\'s records…" ' +
       'style="width:100%;max-width:420px;" oninput="SLFBoard.runContactSearch(this.value)" />' +
@@ -59,7 +62,6 @@
           var tabName = '';
           SLFBoard.TABS.forEach(function (t) { if (t.id === tabId) tabName = t.name; });
           if (!tabName) {
-            // budget is no longer in the strip; keep a readable name
             if (tabId === 'budget') tabName = 'Budget';
           }
           var line = '';
