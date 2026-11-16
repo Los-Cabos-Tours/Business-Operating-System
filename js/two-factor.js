@@ -1,32 +1,30 @@
 // ============================================================
-// BOS Two-Factor Authentication — email 6-digit PIN — v2.0
+// BOS Two-Factor Authentication — email 6-digit PIN — v2.1
 // Owner order (2026-11-16): every login must also enter a fresh
 // 6-digit PIN emailed to the user. SUPER ADMIN is exempt.
 // PIN expires after 2 MINUTES. Three wrong attempts block.
 //
-// v2.0 (owner order: "there should be no old AKfy in the code —
-// send only to the new one"):
-//  1. NO BACKEND URL IN THE CODE. The dead old URL is not
-//     written anywhere in this file. The app keeps a DEAD LIST
-//     in the browser's own storage (aetherion_dead_backends).
-//     URLs on that list are refused everywhere in this module.
-//  2. PASTE-TO-KILL: when a new backend URL is adopted (via the
-//     PIN-box field), the previously configured URL is added to
-//     the dead list automatically — it can never be used again.
-//  3. URL FIELD ON THE PIN BOX: if the backend is missing or on
-//     the dead list, the PIN box shows a paste field. Saving a
-//     fresh /exec URL there sets it as THE one backend, kills
-//     the old one, and sends the PIN immediately.
-//  4. Kept: one backend only; Cancel = full sign-out + reload;
-//     resend = fresh code + fresh clock; 3 wrong attempts block;
-//     expired challenges auto-clear; overlay survives reload.
+// v2.1 (minimal change over verified v2.0):
+//  The URL swap field is now ALWAYS visible on the PIN box,
+//  showing the currently configured backend. v2.0 hid the field
+//  when a backend existed — but the owner's device had the OLD
+//  dead URL configured, so the box kept sending to it with no
+//  on-screen way to swap it (locked out of Settings behind the
+//  PIN). Now: the lock screen itself always shows the backend
+//  and accepts a paste-to-swap, which kills the old URL (dead
+//  list) and sends the PIN to the new backend immediately.
+//
+// v2.0 (kept): no backend URL in code; dead list in browser
+//  storage; paste-to-kill; one backend only; Cancel = full
+//  sign-out + reload; resend = fresh code + fresh clock; 3
+//  wrong attempts block; expired challenges auto-clear.
 // ============================================================
 (function () {
   'use strict';
 
   try { if (window.self !== window.top) return; } catch (e) { return; }
 
-  var VERSION = '2.0';
+  var VERSION = '2.1';
   var SESSION_KEY = 'aetherion_user';
   var USERS_KEY = 'aetherion_users';
   var PENDING_KEY = 'aetherion_2fa_pending';
@@ -49,7 +47,7 @@
     } catch (e) { return []; }
   }
 
-  // ---- v2.0: dead list (lives in browser storage, not in code) ----
+  // ---- dead list (lives in browser storage, not in code) ----
   function getDeadList() {
     try {
       var a = JSON.parse(ls(DEAD_LIST_KEY) || '[]');
@@ -86,7 +84,7 @@
     if (!SCRIPT_URL_RE.test(url)) return { ok: false, url: url, dead: false, missing: false };
     return { ok: true, url: url, dead: false, missing: false };
   }
-  // v2.0 paste-to-kill: adopting a new URL kills the old one forever
+  // paste-to-kill: adopting a new URL kills the old one forever
   function adoptNewBackend(url) {
     var old = getSyncUrl();
     if (old && old !== url) addDeadUrl(old);
@@ -231,8 +229,8 @@
       '<button id="bos-2fa-resend" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Resend code</button>' +
       '<button id="bos-2fa-cancel" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Cancel</button>' +
       '</div>' +
-      '<div id="bos-2fa-urlrow" style="display:none;margin-top:14px;text-align:left;">' +
-      '<div style="font-size:11px;color:#FF6B6B;margin-bottom:6px;" id="bos-2fa-urlrow-reason"></div>' +
+      '<div id="bos-2fa-urlrow" style="margin-top:14px;text-align:left;border-top:1px solid rgba(240,234,214,0.1);padding-top:12px;">' +
+      '<div id="bos-2fa-urlrow-reason" style="font-size:10px;color:#7A8B9C;margin-bottom:6px;word-break:break-all;line-height:1.4;"></div>' +
       '<input id="bos-2fa-url" type="url" placeholder="Paste your NEW Apps Script /exec URL here" style="width:100%;box-sizing:border-box;padding:9px 10px;font-size:11px;background:rgba(10,22,40,0.6);border:1px solid rgba(201,168,76,0.2);border-radius:8px;color:#F0EAD6;outline:none;" />' +
       '<button id="bos-2fa-urlsend" style="width:100%;margin-top:6px;padding:8px;border-radius:8px;border:1px solid rgba(201,168,76,0.45);background:rgba(201,168,76,0.15);color:#C9A84C;font-size:11px;font-weight:600;cursor:pointer;">Save URL &amp; Send PIN to this URL</button>' +
       '</div>' +
@@ -265,21 +263,24 @@
     }
     document.getElementById('bos-2fa-input').value = '';
     document.getElementById('bos-2fa-input').focus();
+    refreshUrlRow();
   }
 
+  // v2.1: ALWAYS show the backend and the swap field — never hidden
   function refreshUrlRow() {
     var row = document.getElementById('bos-2fa-urlrow');
     var reason = document.getElementById('bos-2fa-urlrow-reason');
     if (!row) return;
-    var st = backendState();
-    if (st.ok) { row.style.display = 'none'; return; }
     row.style.display = 'block';
+    var st = backendState();
     if (st.dead) {
-      reason.textContent = 'The configured backend is on the dead list. Paste your NEW /exec URL below — it will be saved as the system backend and the PIN sent there immediately.';
+      reason.textContent = 'Current backend (DEAD): ' + st.url + ' — paste your NEW /exec URL below and press Save URL & Send.';
     } else if (st.missing) {
-      reason.textContent = 'No backend URL is configured. Paste your NEW /exec URL below — it will be saved as the system backend and the PIN sent there immediately.';
+      reason.textContent = 'No backend URL configured — paste your NEW /exec URL below and press Save URL & Send.';
+    } else if (!st.ok) {
+      reason.textContent = 'Current backend (INVALID): ' + st.url + ' — paste the correct /exec URL below.';
     } else {
-      reason.textContent = 'The configured URL is not a valid Apps Script /exec URL. Paste the correct one below.';
+      reason.textContent = 'Current backend: ' + st.url + ' — if this is the old one, paste your NEW /exec URL below and press Save URL & Send.';
     }
   }
 
@@ -298,9 +299,9 @@
     }
     adoptNewBackend(url);
     var r = sendPinEmail(p.email, p.pin, p.session.username);
+    refreshUrlRow();
     if (r.sent) {
       setStatus('URL SAVED and PIN sent to the new backend:\n' + url + '\nCheck ' + (p.email ? maskEmail(p.email) : 'your email') + ' (and spam).');
-      refreshUrlRow();
     } else {
       setStatus('URL SAVED, but PIN send failed: ' + r.error);
     }
@@ -341,15 +342,14 @@
     lsSet(PENDING_KEY, JSON.stringify(pending));
     try { localStorage.removeItem(found.key || SESSION_KEY); } catch (e) {}
     showOverlay(pending);
-    refreshUrlRow();
     if (email) {
       var r = sendPinEmail(email, pin, s.username);
       if (r.sent) {
         setStatus('PIN request SENT to the one backend:\n' + r.url + '\nCheck that address (and spam) — code expires in 2 minutes.');
       } else if (r.dead) {
-        setStatus('PIN NOT SENT — REFUSED. The configured backend is on the dead list:\n' + r.url + '\nPaste your NEW /exec URL in the box below and press Save URL & Send.');
+        setStatus('PIN NOT SENT — REFUSED. The configured backend is on the dead list:\n' + r.url + '\nPaste your NEW /exec URL below and press Save URL & Send.');
       } else {
-        setStatus('PIN request NOT SENT — ' + r.error + '.\nIf you have a new URL, paste it in the box below.');
+        setStatus('PIN request NOT SENT — ' + r.error + '.\nPaste your NEW /exec URL below and press Save URL & Send.');
       }
     } else {
       setStatus('PIN NOT SENT — no email address on file for "' + s.username + '". Set it in Users & Access.');
@@ -371,9 +371,9 @@
       if (r.sent) {
         setStatus('RESENT to the one backend:\n' + r.url);
       } else if (r.dead) {
-        setStatus('RESEND REFUSED — the configured backend is on the dead list.\nPaste your NEW /exec URL in the box below and press Save URL & Send.');
+        setStatus('RESEND REFUSED — the configured backend is on the dead list.\nPaste your NEW /exec URL below and press Save URL & Send.');
       } else {
-        setStatus('RESEND FAILED — ' + r.error + '.\nIf you have a new URL, paste it in the box below.');
+        setStatus('RESEND FAILED — ' + r.error + '.\nPaste your NEW /exec URL below and press Save URL & Send.');
       }
     } else {
       setStatus('RESEND FAILED — no email on file for "' + p.session.username + '".');
