@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sign Document — SLF</title>
+<style>
+:root { --navy:#0A1628; --panel:rgba(15,32,64,0.45); --gold:#C9A84C; --text:#F0EAD6; --muted:rgba(240,234,214,0.6); --line:rgba(201,168,76,0.2); --green:#6BCB77; --red:#D4581A; }
+* { box-sizing:border-box; }
+body { margin:0; font-family:Inter,sans-serif; background:var(--navy); color:var(--text); }
+.wrap { max-width:760px; margin:0 auto; padding:32px 20px 60px; }
+h1 { font-family:Cinzel,serif; color:var(--gold); font-size:20px; letter-spacing:1px; margin:0 0 6px; }
+.tag { font-size:11px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-bottom:24px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:18px; }
+.card h2 { font-size:14px; color:var(--gold); margin:0 0 12px; letter-spacing:0.5px; }
+.doc { white-space:pre-wrap; font-size:13.5px; line-height:1.7; }
+input, textarea { background:rgba(10,22,40,0.6); border:1px solid var(--line); border-radius:8px; color:var(--text); padding:9px 12px; font-size:13px; font-family:inherit; width:100%; }
+input:focus { outline:1px solid var(--gold); }
+label { display:block; font-size:10.5px; color:var(--muted); margin:0 0 5px; letter-spacing:0.5px; }
+canvas { background:#F5EDD8; border-radius:10px; border:1px solid var(--line); touch-action:none; cursor:crosshair; display:block; width:100%; }
+.btn { display:inline-flex; align-items:center; gap:6px; padding:10px 18px; border-radius:9px; border:1px solid rgba(201,168,76,0.45); background:rgba(201,168,76,0.15); color:var(--gold); font-size:13px; font-weight:600; cursor:pointer; }
+.btn:hover { background:rgba(201,168,76,0.28); }
+.btn.ghost { border-color:rgba(240,234,214,0.2); color:var(--muted); background:transparent; }
+.actions { display:flex; gap:10px; flex-wrap:wrap; }
+.legal { font-size:11px; color:var(--muted); line-height:1.6; }
+.hashbox { font-family:monospace; font-size:11px; color:var(--muted); word-break:break-all; background:rgba(10,22,40,0.6); padding:8px 10px; border-radius:8px; border:1px solid var(--line); }
+.err { color:#FF8A5C; font-size:13px; }
+.ok { color:var(--green); font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Document Signature</h1>
+  <div class="tag" id="doc-tag">Loading document…</div>
+  <div id="content">
+    <div class="card"><h2>Document</h2><div class="doc" id="doc-text"></div></div>
+    <div class="card"><h2>Your Signature</h2>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Sign inside the box using your finger or mouse, then type your full legal name and press Sign.</p>
+      <canvas id="sig-pad" width="700" height="200"></canvas>
+      <div style="display:flex;gap:10px;margin-top:10px;">
+        <button class="btn ghost" id="btn-clear" onclick="clearSig()">Clear</button>
+        <span id="sig-status" class="err" style="align-self:center;"></span>
+      </div>
+      <div style="margin-top:14px;"><label>Full legal name (typed) *</label><input id="typed-name" placeholder="Type your full legal name" /></div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer;font-size:12.5px;color:var(--text);">
+        <input type="checkbox" id="agree" style="width:16px;height:16px;accent-color:var(--gold);" />
+        I have read and agree to the document above, and I intend my signature to be legally binding.
+      </label>
+      <div class="actions" style="margin-top:18px;">
+        <button class="btn" id="btn-sign" onclick="doSign()">Sign Document</button>
+      </div>
+    </div>
+    <div class="card"><h2>Integrity</h2>
+      <p class="legal">The document you sign is locked to a cryptographic hash. Any alteration to the text, your identity, or the request — before or after signing — is detected automatically and rejected on import.</p>
+      <div class="hashbox" id="hash-box"></div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var q = {};
+  location.search.slice(1).split('&').forEach(function (pair) {
+    if (!pair) return;
+    var kv = pair.split('=');
+    q[decodeURIComponent(kv[0])] = decodeURIComponent((kv[1] || '').replace(/\+/g, '%20'));
+  });
+  var docText = q.text || '';
+  var docName = q.doc || 'Document';
+  var signerName = q.signer || '';
+  var requestId = q.id || '';
+  var linkHash = q.hash || '';
+
+  document.getElementById('doc-tag').textContent = docName + (signerName ? ' — for ' + signerName : '') + (requestId ? ' · ref ' + requestId : '');
+  document.getElementById('doc-text').textContent = docText || 'No document content was provided in this link. Contact the sender.';
+
+  // --- SHA-256 (same implementation as slf-esign.js) ---
+  function rotr(n, x) { return (x >>> n) | (x << (32 - n)); }
+  function sha256(str) {
+    var utf8 = unescape(encodeURIComponent(str));
+    var H = [0x6a09e667, 0xbb67ae85, 3, 0x510e527f, 0x6b1d6bbf, 0x10f0e52d, 0x67f6f2ab, 0x6c1d0f9b];
+    var K = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+      0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+      0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+      0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+      0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+      0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+      0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+      0x74aa2d09, 0x68d9e612, 0x8e8c7d9a, 0x3be91c9b, 0x3ff0d335, 0xc2e7e035, 0xd15ded5c, 0x84dfe841,
+      0xadfa7c67, 0xf7684a2b, 0x2fd6b0e7, 0xa9b9c53e, 0x8f6a6f28, 0x6bfbf774, 0x2fb6de38, 0xf40d86d1];
+    var l = utf8.length;
+    var withOne = ((l + 8) >> 6) + 1;
+    var words = new Array(withOne * 16).fill(0);
+    for (var i = 0; i < l; i++) words[i >> 2] |= (utf8.charCodeAt(i) & 0xff) << (24 - (i % 4) * 8);
+    words[l >> 2] |= 0x80 << (24 - (l % 4) * 8);
+    words[withOne * 16 - 1] = l * 8;
+    for (var j = 0; j < withOne; j++) {
+      var w = new Array(64);
+      var t;
+      for (t = 0; t < 16; t++) w[t] = words[j * 16 + t];
+      for (t = 16; t < 64; t++) {
+        var s0 = rotr(7, w[t - 15]) ^ rotr(18, w[t - 15]) ^ (w[t - 15] >>> 3);
+        var s1 = rotr(17, w[t - 2]) ^ rotr(19, w[t - 2]) ^ (w[t - 2] >>> 10);
+        w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;
+      }
+      var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+      for (var t2 = 0; t2 < 64; t2++) {
+        var S1 = rotr(6, e) ^ rotr(11, e) ^ rotr(25, e);
+        var ch = (e & f) ^ (~e & g);
+        var temp1 = (h + S1 + ch + K[t2] + w[t2]) | 0;
+        var S0 = rotr(2, a) ^ rotr(13, a) ^ rotr(22, a);
+        var maj = (a & b) ^ (a & c) ^ (b & c);
+        var temp2 = (S0 + maj) | 0;
+        h = g; g = f; f = e; e = (d + temp1) | 0; d = c; c = b; b = a; a = (temp1 + temp2) | 0;
+      }
+      H[0] = (H[0] + a) | 0; H[1] = (H[1] + b) | 0; H[2] = (H[2] + c) | 0; H[3] = (H[3] + d) | 0;
+      H[4] = (H[4] + e) | 0; H[5] = (H[5] + f) | 0; H[6] = (H[6] + g) | 0; H[7] = (H[7] + h) | 0;
+    }
+    var out = '';
+    for (var m = 0; m < 8; m++) out += ('00000000' + ((H[m] >>> 0).toString(16))).slice(-8);
+    return out;
+  }
+
+  // Identical formula to slf-esign.js contentHash():
+  // id | docName | docText | signerName | signerEmail | createdAt
+  function contentHash() {
+    return sha256(requestId + '|' + docName + '|' + docText + '|' + signerName + '|' + (q.email || '') + '|' + (q.created || ''));
+  }
+
+  var computed = contentHash();
+  document.getElementById('hash-box').textContent = 'Document hash (SHA-256): ' + (linkHash || computed);
+
+  if (linkHash && computed !== linkHash) {
+    document.getElementById('doc-text').textContent = 'This signature link appears to have been altered (hash mismatch). Do not sign. Contact the sender.';
+    document.getElementById('btn-sign').disabled = true;
+  }
+
+  // --- signature pad ---
+  var canvas = document.getElementById('sig-pad');
+  var ctx = canvas.getContext('2d');
+  ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#0A1628';
+  var drawing = false, hasInk = false, last = null;
+  function pos(e) {
+    var r = canvas.getBoundingClientRect();
+    var x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+    var y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+    return { x: x * (canvas.width / r.width), y: y * (canvas.height / r.height) };
+  }
+  function start(e) { drawing = true; last = pos(e); hasInk = true; if (e.touches) e.preventDefault(); }
+  function move(e) {
+    if (!drawing) return;
+    var p = pos(e);
+    ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    last = p;
+    if (e.touches) e.preventDefault();
+  }
+  function end() { drawing = false; last = null; }
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+  window.clearSig = function () {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasInk = false;
+  };
+
+  window.doSign = function () {
+    var typed = document.getElementById('typed-name').value.trim();
+    var agree = document.getElementById('agree').checked;
+    var st = document.getElementById('sig-status');
+    if (!hasInk) { st.textContent = 'Please sign inside the box first.'; st.className = 'err'; return; }
+    if (!typed) { st.textContent = 'Please type your full legal name.'; st.className = 'err'; return; }
+    if (!agree) { st.textContent = 'Please tick the agreement box to confirm you intend to sign.'; st.className = 'err'; return; }
+    var signedAt = new Date().toISOString();
+    var bundle = {
+      format: 'slf-signed', version: 1, requestId: requestId,
+      docName: docName, docText: docText, hash: computed,
+      signedAt: signedAt, typedName: typed,
+      signatureData: canvas.toDataURL('image/png'),
+      signerIpHint: ''
+    };
+    var blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'SLF-signed-' + (requestId || 'document') + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    st.textContent = 'Signed. Your signed copy downloaded — send this file back to the sender (by email reply).';
+    st.className = 'ok';
+  };
+})();
+</script>
+</body>
+</html>
