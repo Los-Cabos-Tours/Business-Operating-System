@@ -1,13 +1,14 @@
 // Forth clone — Contact Search nested tab (magnifying glass).
 // Owner request (this session): Contact Search must be a nested
 // TAB with a magnifying glass icon, and it must search WITHOUT
-// leaving the client profile. This module adds a "🔍 Search" tab
-// to the nested strip whose workspace searches every record
+// leaving the client profile. This module adds a magnifying-glass
+// tab to the nested strip whose workspace searches every record
 // stored for THIS contact across all tabs (history, calls,
 // emails, notes, docs, tasks, events, sms, emarketing, cards,
 // bank, debts, loans, lenders, servicing, alerts, budget) and
-// shows the matching lines, live, as you type. Clicking a result
-// jumps to the source tab. Nothing else is touched.
+// shows the matching lines, live, as you type.
+//
+// Label: ICON ONLY — just the magnifying glass, no "Search" text.
 //
 // Also per owner order: the duplicate Budget strip button is
 // REMOVED (the Budget Analysis action in the action bar opens
@@ -26,8 +27,8 @@
     if (SLFBoard.TABS[i].id === 'budget') SLFBoard.TABS.splice(i, 1);
   }
 
-  // ---- 2. Add the Search tab (magnifying glass) ----
-  SLFBoard.TABS.push({ id: 'search', name: '🔍 Search', note: 'Search this contact\'s records without leaving the profile.' });
+  // ---- 2. Add the Search tab (magnifying glass, icon only) ----
+  SLFBoard.TABS.push({ id: 'search', name: '🔍', note: 'Search this contact\'s records without leaving the profile.' });
 
   var SEARCHABLE = ['history', 'calls', 'emails', 'notes', 'emarketing', 'sms', 'docs', 'events', 'tasks', 'alerts', 'cards', 'bank', 'debts', 'loans', 'lenders', 'servicing', 'budget'];
 
