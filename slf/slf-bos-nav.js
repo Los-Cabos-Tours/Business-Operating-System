@@ -1,15 +1,18 @@
 // ============================================================
 // REQUIRED CRM NAVIGATION ARCHITECTURE (owner specification)
-// v3 — APPEND ONLY. The v1 bug: nav.innerHTML replaced the entire
-// sidebar and destroyed the buttons for the existing developed
-// views (Cases & Pipeline, Activity History, Backup & Restore,
-// Custom Fields, Signatures). Owner order: restore everything,
-// add the missing tabs, take nothing away. This version:
-//   - leaves every existing nav button in place and working
-//   - APPENDS the 17 spec modules after them (idempotent)
-//   - keeps the 9-item contact action bar, Lenders tab,
-//     breadcrumb, contact search, and placeholder workspaces
-// DO NOT REPLACE THE NAV IN ANY FUTURE CHANGE.
+// v4 — MODULES GO ON TOP, HORIZONTALLY, LIKE THE FORTH CRM.
+// Owner correction (this session): the 17 modules do NOT belong
+// in the sidebar stacked vertically — they belong in a horizontal
+// bar ACROSS THE TOP of the page, matching the Forth CRM Client
+// Dashboard screenshot. The sidebar (Dashboard, Clients, Cases &
+// Pipeline, Activity History, Backup & Restore, Custom Fields,
+// Signatures) is NEVER touched — it stays exactly as the owner
+// built it. v1's replace-the-sidebar bug and v3's appended-
+// sidebar-button placement are both rolled back for the module
+// buttons; only the top bar carries them now.
+// Also retained from the spec: 9-item contact action bar, Lenders
+// nested tab, breadcrumb, working contact search, and real
+// placeholder workspaces for undeveloped modules.
 // ============================================================
 'use strict';
 (function () {
@@ -68,7 +71,7 @@
     })(SLFBoard.recLabel);
   }
 
-  // ---------- 2. Main CRM modules (spec #1) — appended, never replacing ----------
+  // ---------- 2. Main CRM modules — HORIZONTAL TOP BAR ----------
   var MODULES = [
     { id: 'dashboard', name: 'Dashboard', view: 'dashboard' },
     { id: 'guidelines', name: 'Guidelines', placeholder: true },
@@ -101,20 +104,30 @@
       return id;
     },
 
-    // APPENDS the module buttons AFTER every existing nav button.
-    // Existing data-view buttons are untouched and keep their
-    // original listeners. Idempotent: safe on every boot/render.
-    appendTopNav: function () {
-      var nav = document.getElementById('nav');
-      if (!nav || !window.SLF) return;
-      if (nav.querySelector('[data-bos]')) return; // already added
+    // Renders the horizontal module bar ACROSS THE TOP of the
+    // page (inside <main>, above the back link and view title),
+    // exactly like the Forth CRM screenshot's top module row.
+    // The sidebar nav (#nav) is NEVER touched.
+    renderTopBar: function () {
+      var main = document.querySelector('main');
+      if (!main || !window.SLF) return;
+      var bar = document.getElementById('bos-module-bar');
+      if (bar) return; // already rendered
+      bar = document.createElement('div');
+      bar.id = 'bos-module-bar';
+      bar.style.cssText = 'display:flex;flex-wrap:wrap;gap:2px;align-items:center;' +
+        'border-bottom:1px solid var(--line);padding:6px 0 8px 0;margin-bottom:12px;';
+      var self = this;
       MODULES.forEach(function (m) {
         var b = document.createElement('button');
         b.setAttribute('data-bos', m.id);
         b.textContent = m.name;
-        b.addEventListener('click', function () { BOSCRM.selectModule(m.id); });
-        nav.appendChild(b);
+        b.style.cssText = 'background:none;border:none;border-bottom:2px solid transparent;' +
+          'color:var(--muted);padding:7px 11px;font-size:12.5px;cursor:pointer;font-family:inherit;white-space:nowrap;';
+        b.addEventListener('click', function () { self.selectModule(m.id); });
+        bar.appendChild(b);
       });
+      main.insertBefore(bar, main.firstChild);
       this.syncActive();
     },
 
@@ -148,22 +161,18 @@
       }
     },
 
-    // Highlight sync for BOTH button kinds: existing data-view
-    // buttons and the appended data-bos module buttons.
+    // Highlights the active module in the top bar only. The
+    // sidebar keeps its own independent highlighting.
     syncActive: function () {
-      var nav = document.getElementById('nav');
-      if (!nav || !window.SLF) return;
+      var bar = document.getElementById('bos-module-bar');
+      if (!bar || !window.SLF) return;
       var modId = this.activeModule;
       if (SLFBoard.state().clientId) modId = 'contacts';
-      var self = this;
-      Array.prototype.forEach.call(nav.children, function (b) {
-        var dv = b.getAttribute('data-view');
+      Array.prototype.forEach.call(bar.children, function (b) {
         var db = b.getAttribute('data-bos');
-        if (dv) {
-          b.classList.toggle('active', SLF.view === dv && !SLFBoard.state().clientId);
-        } else if (db) {
-          b.classList.toggle('active', db === modId);
-        }
+        b.style.color = (db === modId) ? 'var(--gold)' : 'var(--muted)';
+        b.style.borderBottomColor = (db === modId) ? 'var(--gold)' : 'transparent';
+        b.style.fontWeight = (db === modId) ? '600' : '400';
       });
     }
   };
@@ -184,7 +193,6 @@
       };
     }
 
-    // Breadcrumb (spec #5): Main CRM / Contacts / <contact>
     SLFBoard.panel.breadcrumbHtml = function (c) {
       return '<div style="font-size:11px;color:var(--muted);margin:0 0 8px 0;">' +
         'Main CRM / Contacts / ' + SLFBoard.esc(c.name) + '</div>';
@@ -194,7 +202,7 @@
   // ---------- 4. Wire up ----------
   function boot() {
     if (!window.SLF || !window.BOSCRM) return;
-    BOSCRM.appendTopNav();
+    BOSCRM.renderTopBar();
   }
 
   if (document.readyState === 'loading') {
