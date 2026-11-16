@@ -1,20 +1,17 @@
-// Forth clone — top navigation bar module v5.
-// Owner correction (this session): clicking the magnifying glass
-// must produce ZERO change on screen — not even the search box
-// appearing counts as "no change". v4 toggled the box's display,
-// which visibly altered the bar the moment you clicked. v5 keeps
-// the search input ALWAYS IN THE BAR (identical pixels before and
-// after the click) — clicking the glass does exactly one thing:
-// focuses the cursor in that box so the user starts typing.
-// No toggle. Nothing appears. Nothing moves. The current tab and
-// the whole workspace are untouched.
-// Everything else identical to v4 (8 labeled actions, #34's
+// Forth clone — top navigation bar module v8.
+// Owner directive (final, literal): ONE element — the magnifying
+// glass INSIDE the field where you type. And when the user types
+// in that field, NOTHING on the page changes: no panel appears,
+// nothing moves, no tab switches, no workspace change. v7 still
+// revealed a floating results panel on typing — that was a
+// visible change and is removed in v8. The field is permanently
+// in the action bar; click it and type; the page stays exactly
+// as it is, before, during, and after typing.
+// Everything else identical to v7 (8 labeled actions, #34's
 // Update Status block untouched).
 'use strict';
 (function () {
   if (!window.SLFBoard) return;
-
-  var GLASS = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="vertical-align:-2px;"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>';
 
   function bindActionBar() {
     if (!window.SLFBoard || !SLFBoard.panel) return;
@@ -23,9 +20,15 @@
       function item(label, action) {
         return '<span class="fnavi" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLFBoard.navAction(\'' + action + '\')">' + label + '</span>';
       }
+      // Single search field: glass icon INSIDE the input (left),
+      // embedded via absolute positioning over a padded input.
+      // Click it, type. No toggle, no reveal, no results panel —
+      // typing changes nothing on screen.
       return '<div class="fnav" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 12px 0;padding:8px 12px;background:rgba(15,32,64,0.35);border:1px solid var(--line);border-radius:10px;">' +
-        '<span class="fnavi" title="Search this contact\'s records" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLFBoard.focusSearch()">' + GLASS + '</span>' +
-        '<input id="fnav-search-input" placeholder="Search this contact\'s records…" style="display:inline-block;width:220px;max-width:220px;padding:4px 8px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);background:rgba(10,22,40,0.6);color:var(--text);font-family:inherit;" oninput="SLFBoard.runContactSearch(this.value)" />' +
+        '<span style="position:relative;display:inline-flex;align-items:center;flex:none;">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>' +
+        '<input id="fnav-search-input" placeholder="Search this contact\'s records…" style="width:210px;max-width:210px;padding:6px 10px 6px 27px;font-size:12px;border-radius:7px;border:1px solid var(--line);background:rgba(10,22,40,0.6);color:var(--text);font-family:inherit;" />' +
+        '</span>' +
         item('Edit Contact', 'edit') +
         item('Clone', 'clone') +
         item('Create Order', 'order') +
@@ -38,8 +41,7 @@
         '<span style="color:var(--muted);font-size:11px;">Favorites</span>' +
         '<select id="fav-select" style="width:auto;max-width:150px;padding:4px 8px;font-size:11px;background:rgba(10,22,40,0.6);border:1px solid var(--line);border-radius:6px;color:var(--text);">' +
         '<option value="">— select —</option></select></span>' +
-        '</div>' +
-        '<div id="fnav-search-results" style="display:none;margin:0 0 12px 0;padding:8px 12px;background:rgba(15,32,64,0.35);border:1px solid var(--line);border-radius:10px;max-height:220px;overflow:auto;"></div>';
+        '</div>';
     };
 
     SLFBoard.navAction = function (a) {
