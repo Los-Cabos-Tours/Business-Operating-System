@@ -124,6 +124,11 @@ a.back:hover { color:var(--gold); }
   </div>
 </div>
 
+<!-- Boot sync: pulls ALL shared data (main BOS + Student Loans) from the
+     configured sync backend before this app renders, so every device
+     shows the same information. Auto-enables SLF data sync (owner order:
+     one shared backend, all data shared with all users). -->
+<script src="../js/boot-sync.js"></script>
 <script src="../js/settings.js"></script>
 <script src="slf-guard.js?v=3.15"></script>
 </body>
