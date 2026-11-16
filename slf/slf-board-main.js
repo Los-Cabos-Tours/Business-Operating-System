@@ -1,4 +1,10 @@
-// SLF Board main controller (split 5/5) v6
+// SLF Board main controller (split 5/5) v7
+// v7 FIX: internal actions (setTab, addFromForm, removeItem, open)
+// previously called the private render() directly, which skipped
+// every wrapper attached to the public SLFBoard.render (breadcrumb,
+// highlight sync). They now call SLFBoard.render() so the full
+// chain runs. The Update Status block is byte-identical to #34
+// (user-approved placement — DO NOT MOVE).
 'use strict';
 (function () {
   function displayLine(tab, r) {
@@ -60,8 +66,9 @@
         '<span style="color:var(--muted);font-size:12.5px;">Update Status</span>' +
         '<select id="f-stage" style="background:rgba(10,22,40,0.6);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:5px 8px;font-size:12px;font-family:inherit;max-width:220px;" onchange="SLFBoard.updateStage(this.value)">' + stageOptions + '</select>' +
         '</div>' : '') +
-      // Forth top navigation bar (Edit Contact, Clone, Create
-      // Order, Budget Analysis, Creditors, Enrollment, Settlements)
+      // Forth top navigation bar (Contact Search, Edit Contact,
+      // Clone, Create Order, Budget Analysis, Creditors, Enrollment,
+      // Settlements, Add Alert, Favorites)
       (navBar ? navBar : '') +
       '<div class="bwrap">' +
       '<div class="bleft">' + SLFBoard.panel.infoPanel(c) + '</div>' +
@@ -74,7 +81,7 @@
   SLFBoard.render = render;
 
   var rawSetTab = SLFBoard.setTab;
-  SLFBoard.setTab = function (t) { rawSetTab(t); render(); };
+  SLFBoard.setTab = function (t) { rawSetTab(t); SLFBoard.render(); };
 
   SLFBoard.addFromForm = function () {
     var st = SLFBoard.state();
@@ -90,7 +97,7 @@
     d[c.id][st.tab].push(rec);
     if (!SLFBoard.saveAll(d)) return;
     if (window.SLF) SLF.log('board', st.tab + ' (' + c.id + ')', SLFBoard.recLabel(st.tab, rec));
-    render();
+    SLFBoard.render();
   };
 
   SLFBoard.removeItem = function (id) {
@@ -101,7 +108,7 @@
       d[st.clientId][tab] = d[st.clientId][tab].filter(function (x) { return x.id !== id; });
     });
     SLFBoard.saveAll(d);
-    render();
+    SLFBoard.render();
   };
 
   function flash(msg) {
@@ -175,7 +182,7 @@
   SLFBoard.open = function (clientId) {
     SLFBoard.setClientId(clientId);
     rawSetTab('history');
-    render();
+    SLFBoard.render();
   };
 
   SLFBoard.close = function () {
