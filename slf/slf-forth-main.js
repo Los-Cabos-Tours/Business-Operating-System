@@ -1,10 +1,11 @@
-// Forth main bridge v3: Edit Profile renders custom fields in the
-// SAME section grouping, order, and column layout as the Custom
-// Fields designer, using fieldsInSections (exported by the app).
-// v2 bug: it called SLFFields.inputHtml, which the fields module
-// does NOT export - the profile crashed the moment it tried to
-// draw a field, so the page never opened. v3 builds the same
-// inputs locally, so every designer field type is supported.
+// Forth main bridge v4: profile fields render in the designer's
+// section grouping, order, and column layout - but with NO
+// section-name headers and NO "Edit Profile" heading (user
+// directive). Notes textarea starts BLANK on every open; it is
+// a fresh note field, not a display of old saved notes.
+// v2 bug (kept for history): called SLFFields.inputHtml, which
+// the fields module does NOT export - fixed in v3 by building
+// inputs locally.
 'use strict';
 (function () {
   if (!window.SLFBoard || !SLFBoard.panel) return;
@@ -34,7 +35,6 @@
       }).join('');
       return '<div><label class="fl">' + esc(f.label) + req + '</label>' + boxes + '</div>';
     }
-    var label = '<label class="fl">' + esc(f.label) + req + '</label>';
     if (f.type === 'textarea') {
       return '<div><label class="fl">' + esc(f.label) + req + '</label><textarea id="' + id + '" rows="2"' + ph + '>' + esc(v) + '</textarea></div>';
     }
@@ -61,7 +61,6 @@
       SLFFields.fieldsInSections('client').forEach(function (g) {
         if (!g.fields.length) return;
         var half = g.section.columns === 2;
-        customHtml += '<div class="bfld" style="margin-top:10px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;padding-bottom:2px;">' + esc(g.section.name) + '</div>';
         if (half) customHtml += '<div class="bform">';
         g.fields.forEach(function (f) {
           customHtml += fieldInput(f, c.custom ? c.custom[f.id] : '', 'pe-cf-');
@@ -71,9 +70,8 @@
     }
     return forth +
       '<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px;">' +
-      '<h4 style="margin-bottom:8px;">Edit Profile</h4>' +
       customHtml +
-      '<div class="bfld"><label>Notes</label><textarea id="pe-notes" rows="3">' + esc(c.notes || '') + '</textarea></div>' +
+      '<div class="bfld"><label>Notes</label><textarea id="pe-notes" rows="3" placeholder="Add a note..."></textarea></div>' +
       '<button class="bsave" onclick="SLFBoard.saveProfile()">Save Profile</button>' +
       '<span class="bflash" id="pe-flash">Profile saved.</span>' +
       '</div>';
