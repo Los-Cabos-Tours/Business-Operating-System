@@ -1,0 +1,46 @@
+// ============================================================
+// SLF Guard — parse-gate loader (the "never crash" mechanism)
+// Loaded FIRST, synchronously, before any CRM module.
+// For each module: fetch its text, COMPILE-CHECK it (new Function
+// compiles without executing), and only then write its script tag.
+// A file with a syntax error can NEVER be executed — the exact
+// failure class that broke the live site is now structurally
+// impossible. Failures are reported visibly instead of a dead page.
+//
+// When modules change, bump VERSION below so every browser
+// fetches fresh files (cache-busting).
+// ============================================================
+(function () {
+  'use strict';
+  var VERSION = '1.1';
+  var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js'];
+  var failures = [];
+  var i, m, ok, xhr;
+
+  for (i = 0; i < MODULES.length; i++) {
+    m = MODULES[i];
+    ok = true;
+    try {
+      xhr = new XMLHttpRequest();
+      xhr.open('GET', m + '?v=' + VERSION, false);
+      xhr.send(null);
+      if (xhr.status === 200 || xhr.status === 0) {
+        try {
+          new Function(xhr.responseText);
+        } catch (parseErr) {
+          ok = false;
+          failures.push(m + ' — syntax error blocked: ' + (parseErr && parseErr.message ? parseErr.message : 'parse failed'));
+        }
+      } else {
+        ok = false;
+        failures.push(m + ' — could not be fetched (HTTP ' + xhr.status + ')');
+      }
+    } catch (e) {
+      ok = null;
+    }
+    if (ok === false) continue;
+    document.write('<script src="' + m + '?v=' + VERSION + '"><\/script>');
+  }
+
+  window.__SLF_GUARD_FAILURES = failures;
+})();
