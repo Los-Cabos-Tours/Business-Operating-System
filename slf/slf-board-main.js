@@ -1,4 +1,4 @@
-// SLF Board main controller (split 5/5)
+// SLF Board main controller (split 5/5) v2
 'use strict';
 (function () {
   function displayLine(tab, r) {
@@ -87,21 +87,23 @@
     render();
   };
 
+  // Save Profile v2: custom fields are the ONLY editable fields
+  // (rendered by the designer layout); base email/phone are no
+  // longer fixed rows, so PRESERVE them instead of blanking.
   SLFBoard.saveProfile = function () {
     var c = SLFBoard.client();
     if (!c) return;
-    var val = SLFBoard.val;
-    c.email = val('pe-email').trim();
-    c.phone = val('pe-phone').trim();
-    c.notes = val('pe-notes').trim();
     var custom = {};
     if (window.SLFFields) {
-      SLFFields.fieldsOf('client').forEach(function (f) {
-        var el = document.getElementById('pe-cf-' + f.id);
-        custom[f.id] = el ? el.value : (c.custom ? c.custom[f.id] : '');
-      });
+      var res = SLFFields.readInputs('client', 'pe-cf-');
+      if (res.errors && res.errors.length) {
+        alert('Please fix these first:\n- ' + res.errors.join('\n- '));
+        return;
+      }
+      custom = res.values;
     }
     c.custom = custom;
+    c.notes = SLFBoard.val('pe-notes').trim();
     c.updatedAt = Date.now();
     if (window.SLF) {
       SLF_STORE.write(SLF_CLIENTS_KEY, SLF.clients);
@@ -120,10 +122,23 @@
     SLFBoard.setSaveTimer(setTimeout(function () { el.style.display = 'none'; }, 2500));
   }
 
+  function findCustomValue(needle) {
+    var c = SLFBoard.client();
+    if (!c || !c.custom || !window.SLFFields) return '';
+    var hit = '';
+    SLFFields.fieldsOf('client').forEach(function (f) {
+      if (hit) return;
+      var lab = (f.label || '').toLowerCase();
+      var v = c.custom[f.id];
+      if ((f.type === needle || lab.indexOf(needle) !== -1) && v) hit = String(v);
+    });
+    return hit;
+  }
+
   SLFBoard.quickEmail = function () {
     var c = SLFBoard.client();
     if (!c) return;
-    var email = SLFBoard.val('pe-email') || c.email;
+    var email = c.email || findCustomValue('email');
     if (!email) { alert('No email on file for this client.'); return; }
     var subject = 'Regarding your student loan file';
     var body = 'Hi ' + c.name + ',\n\n';
@@ -137,7 +152,7 @@
     setTimeout(function () {
       var c = SLFBoard.client();
       var p = document.getElementById('q-phone');
-      if (p && c) p.value = SLFBoard.val('pe-phone') || c.phone || '';
+      if (p && c) p.value = c.phone || findCustomValue('phone') || '';
     }, 50);
   };
 
