@@ -33,8 +33,14 @@
           if (doc.getElementById('nav-slf')) return;
           var menu = doc.querySelector('.sidebar-menu');
           if (!menu) return;
-          var role = doc.querySelector('.user-role');
-          if (!role || role.textContent.indexOf('Super Admin') === -1) return;
+          // Access is controlled by WHO HAS AN ACCOUNT, not by role
+          // name: any logged-in user sees the tab. The user (owner)
+          // decides per person whether they get a login and what they
+          // can do inside. Login state is detected by the user chip
+          // shown in the sidebar; the login overlay hides it.
+          var overlay = doc.getElementById('login-overlay');
+          var overlayVisible = !!(overlay && overlay.offsetParent !== null);
+          if (overlayVisible) return; // not logged in yet
           var li = doc.createElement('li');
           li.className = 'menu-item';
           li.id = 'nav-slf';
