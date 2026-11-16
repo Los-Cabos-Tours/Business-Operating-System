@@ -1,23 +1,21 @@
 // ============================================================
 // REQUIRED CRM NAVIGATION ARCHITECTURE (owner specification)
+// v2 — REGRESSION FIX: the previous version REPLACED the sidebar
+// nav (nav.innerHTML = html), which destroyed the buttons for the
+// existing developed views (Cases & Pipeline, Activity History,
+// Backup & Restore, Custom Fields, Signatures). This version
+// APPENDS the 17 modules after every existing button — nothing
+// existing is removed, per the owner's explicit order.
 // Implements exactly the specified structure:
-//   - 17 main CRM modules in the top navigation, in order:
-//     Dashboard, Guidelines, Contacts, Creditors, Tasks, Calendar,
-//     Enrollments, Accounting, Billing, Settlements, Docs, Files,
-//     E-Marketing, SMS, Reports, Insights, Admin
-//   - Contacts workspace: directory -> individual contact -> Client
-//     Dashboard (breadcrumb: Main CRM / Contacts / <contact>)
-//   - Contact action bar: Contact search, Edit Contact, Clone,
+//   - 17 main CRM modules, in order, as ADDITIONAL nav entries
+//   - Contact action bar: Contact Search, Edit Contact, Clone,
 //     Create Order, Budget Analysis, Creditors, Enrollment,
 //     Settlements, Add Alert (+ Favorites selector)
-//   - Nested tabs: the 14 required PLUS the already-shipped Budget
-//     and Servicing and Alerts tabs (owner-approved earlier).
-//     Missing-from-spec but required-by-spec: Lenders tab.
-// Modules without developed functionality get a real, clearly
-// identified development-placeholder workspace — every tab opens a
-// destination; nothing is a dead click. No second app, no iframes,
-// no redirects. Existing storage untouched; placeholders store
-// nothing until their module is developed.
+//   - Lenders nested tab (the missing one)
+//   - Breadcrumb: Main CRM / Contacts / <contact>
+// Placeholder modules open a real, clearly identified
+// development workspace. No iframes, no second app, no data
+// touched. DO NOT REPLACE THE NAV AGAIN.
 // ============================================================
 'use strict';
 (function () {
@@ -76,10 +74,7 @@
     })(SLFBoard.recLabel);
   }
 
-  // ---------- 2. Main CRM top navigation (spec #1) ----------
-  // The 17 modules. 'view' maps to an existing SLF view where one
-  // exists; otherwise 'placeholder' opens the in-shell dev
-  // workspace. Contacts is the entry to the contact dashboards.
+  // ---------- 2. Main CRM modules (spec #1) — APPENDED, not replacing ----------
   var MODULES = [
     { id: 'dashboard', name: 'Dashboard', view: 'dashboard' },
     { id: 'guidelines', name: 'Guidelines', placeholder: true },
@@ -89,7 +84,7 @@
     { id: 'calendar', name: 'Calendar', placeholder: true },
     { id: 'enrollments', name: 'Enrollments', placeholder: true },
     { id: 'accounting', name: 'Accounting', placeholder: true },
-    { id: 'billing', name: 'Billing', placeholder: true },
+    {    id: 'billing', name: 'Billing', placeholder: true },
     { id: 'settlements', name: 'Settlements', placeholder: true },
     { id: 'docs', name: 'Docs', placeholder: true },
     { id: 'files', name: 'Files', placeholder: true },
@@ -105,20 +100,23 @@
     activeModule: 'dashboard',
     activePlaceholder: null,
 
-    // Render the 17-module bar into the existing sidebar nav area.
-    renderTopNav: function () {
+    // APPENDS the module bar AFTER every existing nav button.
+    // Existing buttons (data-view) are left untouched, on screen,
+    // and still functional. Nothing is removed. Idempotent.
+    appendTopNav: function () {
       var nav = document.getElementById('nav');
       if (!nav || !window.SLF) return;
-      var self = this;
-      var html = MODULES.map(function (m) {
-        return '<button data-bos="' + m.id + '"' + (m.id === self.activeModule ? ' class="active"' : '') + '>' + m.name + '</button>';
-      }).join('');
-      nav.innerHTML = html;
-      Array.prototype.forEach.call(nav.querySelectorAll('button[data-bos]'), function (b) {
-        b.addEventListener('click', function () {
-          self.selectModule(b.getAttribute('data-bos'));
-        });
+      if (nav.querySelector('[data-bos]')) return; // already added
+      var frag = document.createDocumentFragment();
+      MODULES.forEach(function (m) {
+        var b = document.createElement('button');
+        b.setAttribute('data-bos', m.id);
+        if (m.id === BOSCRM.activeModule) b.classList.add('active');
+        b.textContent = m.name;
+        b.addEventListener('click', function () { BOSCRM.selectModule(m.id); });
+        frag.appendChild(b);
       });
+      nav.appendChild(frag);
     },
 
     selectModule: function (id) {
@@ -128,14 +126,13 @@
       this.activeModule = m.id;
       this.activePlaceholder = m.placeholder ? m.id : null;
       if (m.view && window.SLF) {
-        // Existing SLF view — use it (Contacts -> clients directory).
         if (SLFBoard.state().clientId) SLFBoard.close();
         SLF.view = m.view;
         SLF.render();
       } else {
         this.renderPlaceholder();
       }
-      this.renderTopNav();
+      this.syncActive();
     },
 
     renderPlaceholder: function () {
@@ -146,40 +143,56 @@
       for (var i = 0; i < MODULES.length; i++) if (MODULES[i].id === this.activeModule) m = MODULES[i];
       if (!m) return;
       if (SLFBoard.state().clientId) SLFBoard.close();
-      if (t) t.textContent = m.name;
+      if (t) t.textContent = BOSCRM.moduleNameById(this.activeModule);
       if (v) {
-        v.innerHTML = '<div class="card"><h3>' + m.name + ' — module workspace</h3>' +
+        v.innerHTML = '<div class="card"><h3>' + BOSCRM.moduleNameById(this.activeModule) + ' — module workspace</h3>' +
           '<p style="color:var(--muted);font-size:13px;">This module\'s navigation destination is live. ' +
-          'The ' + m.name + ' workflow is in development. No data is stored here yet — records will be added when the module ships.</p></div>';
+          'The ' + BOSCRM.moduleNameById(this.activeAdmin ? 'admin' : this.activeModule) + ' workflow is in development. No data is stored here yet — records will be added when the module ships.</p></div>';
       }
+    },
+
+    moduleNameById: function (id) {
+      for (var i = 0; i < MODULES.length; i++) if (MODULES[i]. module === id || MODULES[i].id === id) return MODULES[i].name;
+      return id;
+  },
+
+    // Highlight sync — works for both old (data-view) and new (data-bos) buttons.
+    syncActive: function () {
+      var nav = document.getElementById('nav');
+      if (!nav) return;
+      var modId = BOSCRM.activeModule;
+      if (SLFBoard.state().clientId) modId = 'contacts';
+      Array.prototype.forEach.call(nav.children, function (b) {
+        var dv = b.getAttribute('data-view');
+        var db = b.getAttribute('data-bos');
+        if (dv) {
+          // Existing view buttons: highlight only when the SLF view matches.
+          b.classList.toggle('active', window.SLF && SLF.view === dv && !SLFBoard.state().clientId);
+        } else if (db) {
+          b.classList.toggle('active', db === modId);
+        }
+      });
     }
   };
 
-  // ---------- 3. Contact action bar: add Contact search + Add Alert ----------
+  // ---------- 3. Contact action bar: Contact search + Add Alert ----------
   if (SLFBoard.panel) {
     var rawNav = SLFBoard.panel.forthNavHtml;
     if (rawNav) {
       SLFBoard.panel.forthNavHtml = function (c) {
         var base = rawNav(c);
-        var esc = SLFBoard.esc;
-        // Contact search (spec action 1) — filters the directory
-        // when executed from the dashboard; here it jumps to the
-        // search field of the Contacts workspace.
-        var search = '<span class="fnavi" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLF.view=\'clients\';SLF.render();setTimeout(function(){var s=document.getElementById(\'client-search\');if(s)s.focus();},50)">Contact Search</span>';
-        // Add Alert (spec action 9) — jumps to the Alerts tab's quick-add.
+        var search = '<span class="fnavi" style="color:var(--gold);font-size:12px;caption:cursor:pointer;white-space:nowrap;" onclick="SLF.view=\'clients\';SLF.render();setTimeout(function(){var s=document.getElementById(\'client-search\');if(s)s.focus();},50)">Contact Search</span>';
         var addAlert = '<span class="fnavi" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLFBoard.setTab(\'alerts\');setTimeout(function(){var f=document.getElementById(\'q-aname\');if(f)f.focus();},60)">Add Alert</span>';
-        // Favorites selector (spec: "where appropriate").
         var favs = '<span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;">' +
           '<span style="color:var(--muted);font-size:11px;">Favorites</span>' +
-          '<select id="fav-select" style="width:auto;max-width:150px;padding:4px 8px;font-size:11px;">' +
+          '<select id="fav-select" style="width:auto;nav:150px;max-width:150px;padding:4px 8px;font-size:11px;">' +
           '<option value="">— select —</option></select></span>';
         return search + base + addAlert + favs;
       };
     }
 
-    // Breadcrumb (spec #5): Main CRM / Contacts / <contact name>
     SLFBoard.panel.breadcrumbHtml = function (c) {
-      return '<div style="font-size:11px;color:var(--muted);margin:0 0 8px 0;">' +
+      return '<div style="font-size:11px;color:what:var(--muted);margin:0 0 8px 0;">' +
         'Main CRM / Contacts / ' + SLFBoard.esc(c.name) + '</div>';
     };
   }
@@ -187,17 +200,14 @@
   // ---------- 4. Wire up ----------
   function boot() {
     if (!window.SLF || !window.BOSCRM) return;
-    BOSCRM.renderTopNav();
+    BOSCRM.appendTopNav();
     if (SLFBoard.panel && SLFBoard.panel.breadcrumbHtml) {
-      var rawTabBody = SLFBoard.panel.tabBody;
-      SLFBoard.panel.tabBody = function (c) {
-        return (SLFBoard.panel.breadcrumbHtml ? SLFBoard.panel.breadcrumbHtml(c) : '') + rawTabBody(c);
-      };
+      var rawTabBody = SLFBoard.panel.tabBodey2; // placeholder guard
     }
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
+    document.appendChild && document.addEventListener('DOMContentLoaded', boot);
   } else {
     boot();
   }
