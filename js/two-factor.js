@@ -1,25 +1,29 @@
 // ============================================================
-// BOS Two-Factor Authentication — email 6-digit PIN — v1.6
+// BOS Two-Factor Authentication — email 6-digit PIN — v1.7
 // Owner order (2026-11-16): every login must also enter a fresh
 // 6-digit PIN emailed to the user. SUPER ADMIN is exempt.
 // PIN expires after 2 MINUTES. Three wrong attempts block.
 //
-// v1.6 (owner order: "the 6 digit pin is not being sent — fix
-// it, make sure resend works, all tabs work"):
-//  1. DELIVERY VISIBILITY: the overlay now displays the EXACT
-//     backend URL the PIN request was POSTed to — or "NOT
-//     SENT" with the reason. No more silent dead-URL sends.
-//  2. URL DISCOVERY: if 'aetherion_sync_url' is empty, any
-//     storage key holding an Apps Script /exec URL is used.
-//  3. ALL TABS REPORT: Send, Resend, Verify and Cancel each
-//     update the on-screen status line, so every button's
-//     effect is visible.
-//
-// v1.5 (kept): expired challenges auto-clear (frozen pending
-// state fixed); overlay rebuilds after reload.
-// v1.4 (kept): session discovery + normalization; case-
-// insensitive superadmin check with account-list fallback;
-// superadmin toast; missing-email/missing-backend warnings.
+// v1.7 FIXES (owner report: "no code at all" + "Cancel logs me in"):
+//  1. CANCEL = FULL SIGN-OUT. v1.6 Cancel only hid the overlay;
+//     the CRM frame kept its signed-in state in memory behind it,
+//     so pressing Cancel dropped the user into a live session.
+//     Now: Cancel deletes the pending challenge, the verified
+//     flag AND the CRM session, then RELOADS the whole app so
+//     the CRM re-checks storage and shows the login screen.
+//     Nobody is authenticated by pressing Cancel.
+//  2. PIN SENT TO ALL BACKENDS. The last PIN request was found
+//     sitting in the OLD backend's store (it has no email sender
+//     and can never send). v1.7 fires the PIN request at EVERY
+//     Apps Script /exec URL found anywhere in this device's
+//     storage (deduplicated, nested JSON scanned too) — the new
+//     backend receives it no matter which settings key holds its
+//     URL. The overlay's gray status line lists every URL sent.
+//  3. Kept from v1.6: overlay shows delivery status; resend =
+//     fresh code + fresh 2-minute clock + attempts reset; verify
+//     reports attempts left / blocked; auto-finds sync URL.
+//     Kept from v1.5: expired challenges auto-clear; overlay
+//     rebuilds after reload.
 // ============================================================
 (function () {
   'use strict';
@@ -27,7 +31,7 @@
   // Embedded in the shell's iframe? The shell (index.html) runs 2FA.
   try { if (window.self !== window.top) return; } catch (e) { return; }
 
-  var VERSION = '1.6';
+  var VERSION = '1.7';
   var SESSION_KEY = 'aetherion_user';
   var USERS_KEY = 'aetherion_users';
   var PENDING_KEY = 'aetherion_2fa_pending';
@@ -48,20 +52,36 @@
     } catch (e) { return []; }
   }
 
-  // ---- v1.6: backend URL discovery + status ----
+  // ---- v1.7: collect EVERY backend URL on this device ----
   var SCRIPT_URL_RE = /^https:\/\/script\.google[a-z.]*\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec/;
-  function resolveSyncUrl() {
+  function collectSyncUrls() {
+    var urls = {};
     var primary = (ls(SYNC_URL_KEY) || '').trim();
-    if (primary) return primary;
+    if (primary && SCRIPT_URL_RE.test(primary)) urls[primary] = true;
     try {
       for (var j = 0; j < localStorage.length; j++) {
         var k = localStorage.key(j);
         if (!k) continue;
-        var v = (localStorage.getItem(k) || '').trim();
-        if (v && SCRIPT_URL_RE.test(v)) return v;
+        var raw = localStorage.getItem(k);
+        if (!raw) continue;
+        var val = raw.trim();
+        if (SCRIPT_URL_RE.test(val)) { urls[val] = true; continue; }
+        if (val.indexOf('script.google') === -1) continue;
+        // Scan nested JSON for /exec URLs.
+        try {
+          var obj = JSON.parse(val);
+          (function scan(o) {
+            if (!o || typeof o !== 'object') return;
+            Object.keys(o).forEach(function (kk) {
+              var vv = o[kk];
+              if (typeof vv === 'string' && SCRIPT_URL_RE.test(vv)) urls[vv] = true;
+              else if (vv && typeof vv === 'object') scan(vv);
+            });
+          })(obj);
+        } catch (e) { /* not JSON: skip */ }
       }
     } catch (e) {}
-    return '';
+    return Object.keys(urls);
   }
 
   function setStatus(msg) {
@@ -159,11 +179,10 @@
     return null;
   }
 
-  // ---- email the PIN through the sync backend ----
-  // v1.6: returns { sent: bool, url: string, error: string }
+  // ---- email the PIN through EVERY backend found (v1.7) ----
   function sendPinEmail(email, pin, username) {
-    var url = resolveSyncUrl();
-    if (!url) return { sent: false, url: '', error: 'no backend URL found on this device' };
+    var urls = collectSyncUrls();
+    if (!urls.length) return { sent: 0, urls: [], error: 'no backend URL found on this device' };
     var payload = {
       type: 'bos_2fa_pin',
       email: email,
@@ -171,13 +190,15 @@
       username: username,
       ts: Date.now()
     };
-    try {
-      fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(payload) })
-        .catch(function () {});
-      return { sent: true, url: url, error: '' };
-    } catch (e) {
-      return { sent: false, url: url, error: String(e && e.message || e) };
+    var sent = 0;
+    for (var i = 0; i < urls.length; i++) {
+      try {
+        fetch(urls[i], { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(payload) })
+          .catch(function () {});
+        sent++;
+      } catch (e) { /* this URL failed; others still count */ }
     }
+    return { sent: sent, urls: urls, error: '' };
   }
 
   // ---- overlay UI ----
@@ -269,8 +290,8 @@
     showOverlay(pending);
     if (email) {
       var r = sendPinEmail(email, pin, s.username);
-      if (r.sent) {
-        setStatus('PIN request SENT to backend:\n' + r.url + '\nCheck that address (and spam) — it expires in 2 minutes.');
+      if (r.sent > 0) {
+        setStatus('PIN request SENT to ' + r.sent + ' backend(s):\n' + r.urls.join('\n') + '\nCheck that address (and spam) — code expires in 2 minutes.');
       } else {
         setStatus('PIN request NOT SENT — ' + r.error + '.\nSet the CloudSync backend URL in Settings, then press Resend.');
       }
@@ -290,8 +311,8 @@
     errEl.textContent = '';
     if (p.email) {
       var r = sendPinEmail(p.email, p.pin, p.session.username);
-      if (r.sent) {
-        setStatus('RESENT to backend:\n' + r.url);
+      if (r.sent > 0) {
+        setStatus('RESENT to ' + r.sent + ' backend(s):\n' + r.urls.join('\n'));
       } else {
         setStatus('RESEND FAILED — ' + r.error + '.\nSet the CloudSync backend URL in Settings, then press Resend again.');
       }
@@ -301,9 +322,16 @@
     document.getElementById('bos-2fa-input').focus();
   }
 
+  // ---- v1.7: CANCEL = FULL SIGN-OUT ----
   function cancelChallenge() {
     lsDel(PENDING_KEY);
+    lsDel(VERIFIED_KEY);
+    lsDel(SESSION_KEY);
     hideOverlay();
+    // Reload the app so the CRM frame drops any signed-in state
+    // held in memory behind the overlay. After this, Cancel lands
+    // the user on the login screen, NOT inside the app.
+    window.location.reload();
   }
 
   function verifyPin() {
@@ -319,7 +347,8 @@
       if (p.attempts >= MAX_ATTEMPTS) {
         lsDel(PENDING_KEY);
         errEl.textContent = 'Too many wrong codes. Login blocked — sign in again.';
-        setTimeout(function () { hideOverlay(); }, 1600);
+        // Full sign-out: same hard path as Cancel (v1.7).
+        setTimeout(function () { cancelChallenge(); }, 1600);
         return;
       }
       errEl.textContent = 'Wrong code. ' + (MAX_ATTEMPTS - p.attempts) + ' attempts left.';
