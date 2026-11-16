@@ -1,69 +1,56 @@
-// Forth clone — Contact Search nested tab (magnifying glass).
-// Owner request (this session): Contact Search must be a nested
-// TAB with a magnifying glass icon, and it must search WITHOUT
-// leaving the client profile. Clicking the tab opens the search
-// workspace IN the tab body (not a popup) and the cursor goes
-// straight into the typing box.
-// v3: the tab label is a REAL inline-SVG magnifying glass, not
-// an emoji — the emoji glyph rendered invisibly on some machines
-// (owner reported the tab could not be seen). SVG renders on
-// every platform. Because the stock strip renderer escapes tab
-// names (which would print the SVG as literal text), this module
-// wraps tabNavHtml to render the raw icon for the search tab
-// ONLY; every other tab keeps its escaped plain-text name.
-//
-// Also per owner order: the duplicate Budget strip button is
-// REMOVED (the Budget Analysis action in the action bar opens
-// the same budget workspace). Budget data hooks and storage are
-// untouched.
+// Forth clone — in-bar contact record search.
+// Owner correction (this session): the magnifying glass lives in
+// the ACTION BAR (first item, where Contact Search originally
+// sat) — NOT in the nested tab strip, NOT at the bottom. Clicking
+// it changes NOTHING on screen except revealing the inline
+// search field inside the action bar itself. The current tab,
+// its records, and the whole workspace are never touched — no
+// tab switch, no workspace replacement, no data taken away.
+// Results render in a small panel that appears under the action
+// bar, above the current tab content.
+// The Budget strip button stays removed (per earlier owner
+// order — Budget Analysis in the action bar is the one entry).
 'use strict';
 (function () {
   if (!window.SLFBoard || !SLFBoard.TABS) return;
 
-  // ---- 1. Remove the duplicate Budget strip tab ----
+  // ---- Keep the duplicate Budget strip tab removed (#43 order) ----
   for (var i = SLFBoard.TABS.length - 1; i >= 0; i--) {
     if (SLFBoard.TABS[i].id === 'budget') SLFBoard.TABS.splice(i, 1);
   }
 
-  // ---- 2. Add the Search tab (inline-SVG magnifying glass) ----
-  var ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-label="Search" style="vertical-align:middle;"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>';
-  SLFBoard.TABS.push({
-    id: 'search',
-    name: ICON,
-    note: 'Search this contact\'s records without leaving the profile.',
-    raw: true
-  });
-
-  // ---- 2b. Strip renderer wrap: raw icon for the search tab ----
-  // The stock tabNavHtml escapes every name (esc(t.name)), which
-  // would print the SVG as literal text. This wrap outputs the
-  // raw markup for tabs flagged raw:true (only the search tab is)
-  // and keeps the escaped plain name for every other tab.
-  var origTabNav = SLFBoard.panel.tabNavHtml;
-  SLFBoard.panel.tabNavHtml = function () {
-    var cur = SLFBoard.state().tab;
-    return SLFBoard.TABS.map(function (t) {
-      var label = t.raw ? t.name : SLFBoard.esc(t.name);
-      return '<button class="btab' + (cur === t.id ? ' active' : '') + '" onclick="SLFBoard.setTab(\'' + t.id + '\')">' + label + '</button>';
-    }).join('');
-  };
+  // ---- Strip stays clean: no search tab, no icon in the strip ----
+  // (Earlier attempts wrongly appended the search as a strip tab.
+  // It has been removed; the strip is exactly the plain tabs.)
 
   var SEARCHABLE = ['history', 'calls', 'emails', 'notes', 'emarketing', 'sms', 'docs', 'events', 'tasks', 'alerts', 'cards', 'bank', 'debts', 'loans', 'lenders', 'servicing', 'budget'];
 
-  function searchHtml(c) {
-    return '<div class="bform" style="margin-bottom:10px;">' +
-      '<input id="contact-search-input" placeholder="Search this contact\'s records…" ' +
-      'style="width:100%;max-width:420px;" oninput="SLFBoard.runContactSearch(this.value)" />' +
-      '</div>' +
-      '<div id="contact-search-results" style="margin-top:6px;"></div>';
-  }
+  // Toggle the inline search field in the action bar. Nothing
+  // else on screen changes; the current tab is untouched.
+  SLFBoard.toggleSearch = function () {
+    var box = document.getElementById('fnav-search-input');
+    var out = document.getElementById('fnav-search-results');
+    if (!box) return;
+    var showing = box.style.display !== 'none';
+    box.style.display = showing ? 'none' : 'inline-block';
+    if (out) {
+      out.style.display = 'none';
+      out.innerHTML = '';
+    }
+    if (!showing) box.focus();
+    else box.value = '';
+  };
 
   SLFBoard.runContactSearch = function (q) {
     var c = SLFBoard.client();
-    var out = document.getElementById('contact-search-results');
+    var out = document.getElementById('fnav-search-results');
     if (!c || !out) return;
     q = String(q || '').toLowerCase().trim();
-    if (!q) { out.innerHTML = '<div class="bempty">Type above to search this contact\'s history, calls, emails, notes, and every other tab.</div>'; return; }
+    out.style.display = 'block';
+    if (!q) {
+      out.innerHTML = '<div style="color:var(--muted);font-size:12px;">Type to search this contact\'s records.</div>';
+      return;
+    }
     var esc = SLFBoard.esc;
     var matches = [];
     var d = SLFBoard.all();
@@ -74,10 +61,8 @@
         var text = (r && typeof r === 'object') ? JSON.stringify(r) : String(r);
         if (text.toLowerCase().indexOf(q) !== -1) {
           var tabName = '';
-          SLFBoard.TABS.forEach(function (t) { if (t.id === tabId) tabName = t.raw ? 'Search' : t.name; });
-          if (!tabName) {
-            if (tabId === 'budget') tabName = 'Budget';
-          }
+          SLFBoard.TABS.forEach(function (t) { if (t.id === tabId) tabName = t.name; });
+          if (!tabName && tabId === 'budget') tabName = 'Budget';
           var line = '';
           try { line = SLFBoard.line(tabId, r); } catch (e) { line = ''; }
           if (!line) line = text.slice(0, 120);
@@ -87,27 +72,8 @@
     });
     out.innerHTML = matches.length
       ? matches.join('')
-      : '<div class="bempty">No matches for "' + esc(q) + '".</div>';
-  };
-
-  // ---- 3. Render the Search workspace in the tab body ----
-  var origTabBody = SLFBoard.panel.tabBody;
-  SLFBoard.panel.tabBody = function (c) {
-    if (SLFBoard.state().tab === 'search') {
-      return '<p class="bnote">Search this contact\'s records without leaving the profile.</p>' + searchHtml(c);
-    }
-    return origTabBody.apply(SLFBoard.panel, arguments);
-  };
-
-  // Autofocus the search input when the Search tab opens.
-  var origSetTab = SLFBoard.setTab;
-  SLFBoard.setTab = function (t) {
-    origSetTab(t);
-    if (t === 'search') {
-      setTimeout(function () {
-        var el = document.getElementById('contact-search-input');
-        if (el) el.focus();
-      }, 50);
-    }
+      : '<div style="color:var(--muted);font-size:12px;">No matches for "' + esc(q) + '".</div>';
+    // IMPORTANT: the current tab and its records are untouched.
+    // Search results live only in this panel under the bar.
   };
 })();
