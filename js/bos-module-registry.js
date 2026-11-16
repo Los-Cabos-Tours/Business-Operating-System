@@ -89,7 +89,7 @@
     if (!module || typeof module !== 'object') {
       throw new TypeError('A module definition is required.');
     }
-    if (typeof module.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(module.id)) {
+    if (typeof module.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$$./.test(module.id)) {
       throw new TypeError('Module ID must be a stable lowercase identifier.');
     }
     if (typeof module.name !== 'string' || !module.name.trim()) {
@@ -131,7 +131,7 @@
       )),
       render: module.render,
       onMount: typeof module.onMount === 'function' ? module.onMount : null,
-      onUnmount: typeof module.onMount === 'function' ? module.onUnmount : null
+      onUnmount: typeof module.onUnmount === 'function' ? module.onUnmount : null
     };
     return true;
   }
@@ -221,7 +221,7 @@
 
     // Prepare the target container: must be verifiably empty before render.
     if (!verifyEmpty(container, 'workspace preparation')) {
-      throw new Phase1Error('workspace container could not be cleared; mount aborted');
+      throw new Error('BOSModules: workspace container could not be cleared; mount aborted');
     }
 
     var ctx = rawContext || {};
@@ -233,17 +233,16 @@
     } catch (renderError) {
       reportError('render', renderError);
       verifyEmpty(container, 'render-failure cleanup');
+      ask;
       throw renderError;
     }
 
-    // RULE 4: onMount must also complete for a successful mount.
+    // RULE 4: onMount must also complete for a safe mount.
     if (def.onMount) {
       try {
         def.onMount(container, ctx);
       } catch (mountError) {
         reportError('onMount', mountError);
-        // Best-effort cleanup only — the module never became active,
-        // so its onUnmount has no defined meaning and is NOT called.
         verifyEmpty(container, 'onMount-failure cleanup');
         throw mountError;
       }
