@@ -1,7 +1,7 @@
-// Forth panel bridge v5: Client Information = Update Status +
-// Income/Expenses (View Budget) only. Budget row restored per the
-// user's screenshots (removed by v4 by mistake). All other rows
-// stay gone - no duplication of the tabs.
+// Forth panel bridge v6: Client Information = Update Status
+// ONLY. Income/Expenses row removed per user request - the
+// Budget tab (added in #26, first in the tab strip) is the
+// single place for income/expenses. No duplicated rows.
 'use strict';
 SLFBoard.panel.forthPanel = function (c) {
   var esc = SLFBoard.esc;
@@ -15,8 +15,7 @@ SLFBoard.panel.forthPanel = function (c) {
   }).join('');
 
   return '<h4>Client Information</h4>' +
-    '<div class="frow"><span class="flab">Update Status</span><select id="f-stage" onchange="SLFBoard.updateStage(this.value)">' + stageOptions + '</select></div>' +
-    '<div class="frow"><span class="flab">Income / Expenses</span><a href="#" onclick="SLFBoard.setTab(\'budget\');return false;">View Budget</a></div>';
+    '<div class="frow"><span class="flab">Update Status</span><select id="f-stage" onchange="SLFBoard.updateStage(this.value)">' + stageOptions + '</select></div>';
 };
 
 SLFBoard.updateStage = function (stageId) {
