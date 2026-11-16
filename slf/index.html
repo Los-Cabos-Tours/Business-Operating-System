@@ -124,6 +124,9 @@ a.back:hover { color:var(--gold); }
   </div>
 </div>
 
+<!-- Session gate: no signed-in BOS session, no Student Loans data.
+     Redirects to the main entrance where login + 2FA run. -->
+<script src="../js/session-gate.js"></script>
 <!-- Boot sync: pulls ALL shared data (main BOS + Student Loans) from the
      configured sync backend before this app renders, so every device
      shows the same information. Auto-enables SLF data sync (owner order:
