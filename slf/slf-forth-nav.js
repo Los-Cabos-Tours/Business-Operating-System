@@ -33,7 +33,7 @@
         item('Edit Contact', 'edit') +
         item('Clone', 'clone') +
         item('Create Order', 'order') +
-        item('Budget Analysis', 'behavior') +
+        item('Budget Analysis', 'budget') +
         item('Creditors', 'creditors') +
         item('Enrollment', 'enrollment') +
         item('Settlements', 'settlements') +
@@ -70,7 +70,6 @@
           }
           break;
         case 'budget':
-        case 'behavior':
           SLFBoard.setTab('budget');
           break;
         case 'creditors':
@@ -86,7 +85,7 @@
         default:
           break;
       }
-action    };
+    };
   }
 
   if (document.readyState === 'loading') {
