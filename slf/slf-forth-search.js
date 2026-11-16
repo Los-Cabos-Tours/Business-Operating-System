@@ -1,12 +1,11 @@
-// Forth clone — in-bar contact record search.
-// Owner correction (this session): ONE search entry in the bar —
-// the magnifying glass alone. No permanently visible search box
-// next to it (that was rejected as a duplicate). Clicking the
-// glass reveals the floating search field directly under it,
-// cursor ready; the results panel appears as you type. Neither
-// element participates in the bar's flex layout, so nothing in
-// the bar ever moves. The current tab and its records are never
-// touched.
+// Forth clone — in-field contact record search.
+// Owner directive (final form): ONE search element — the
+// magnifying glass INSIDE the field where you type. The field is
+// permanently in the action bar; clicking it puts the cursor in
+// and the user types. No toggle, no reveal, nothing appears or
+// moves on click. Results render in a floating panel under the
+// bar (absolute — zero reflow). The current tab and its records
+// are never touched.
 // The Budget strip button stays removed (#43 order).
 'use strict';
 (function () {
@@ -18,26 +17,6 @@
   }
 
   var SEARCHABLE = ['history', 'calls', 'emails', 'notes', 'emarketing', 'sms', 'docs', 'events', 'tasks', 'alerts', 'cards', 'bank', 'debts', 'loans', 'lenders', 'servicing', 'budget'];
-
-  // Clicking the glass reveals the floating field under it and
-  // puts the cursor in. Clicking again (or Esc) hides it. Nothing
-  // else on screen changes; the current tab is untouched.
-  SLFBoard.toggleSearch = function () {
-    var box = document.getElementById('fnav-search-input');
-    var out = document.getElementById('fnav-search-results');
-    if (!box) return;
-    var showing = box.style.display !== 'none';
-    box.style.display = showing ? 'none' : 'block';
-    if (out) {
-      out.style.display = 'none';
-      out.innerHTML = '';
-    }
-    if (showing) {
-      box.value = '';
-    } else {
-      box.focus();
-    }
-  };
 
   SLFBoard.runContactSearch = function (q) {
     var c = SLFBoard.client();
