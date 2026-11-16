@@ -1,5 +1,5 @@
 // ============================================================
-// BOS Two-Factor Authentication — email 6-digit PIN — v1.4
+// BOS Two-Factor Authentication — email 6-digit PIN — v1.5
 // Owner order (2026-11-16): every login must also enter a fresh
 // 6-digit PIN emailed to the user, so a stolen password alone
 // can never get anyone in. The SUPER ADMIN (owner) is exempt:
@@ -7,24 +7,24 @@
 // PIN expires after 2 MINUTES. Three wrong attempts block the
 // login.
 //
-// v1.4 FIXES (PIN was never asked on some logins):
-//  1. SESSION DISCOVERY: v1.2 only recognized a sign-in stored
-//     as 'aetherion_user' WITH id + role fields. A session
-//     stored under a different key or shape was invisible, so
-//     the challenge silently never fired. v1.4 finds the
-//     sign-in record wherever it lives (any storage key holding
-//     a JSON object whose username matches a real account) and
-//     normalizes it (id + role filled from the account list).
-//     The ORIGINAL record is held back untouched and restored
-//     exactly as the CRM wrote it on success.
-//  2. SUPERADMIN CHECK is case/spacing-insensitive and falls
-//     back to the account's stored role when the session
-//     record carries none.
-//  3. VISIBLE FEEDBACK: a superadmin login shows a toast saying
-//     the PIN was skipped; a missing CloudSync backend URL is
-//     stated on the overlay instead of pretending a code was sent.
-//  4. EMBEDDED MODE: inside the CRM iframe this script defers to
-//     the shell (index.html), which owns the 2FA flow.
+// v1.5 FIXES (frozen pending challenge blocked later logins):
+//  1. EXPIRY CHECK IN getPending(): a pending challenge whose
+//     2-minute clock has run out is deleted and treated as
+//     gone. Previously a stale pending record survived page
+//     reloads and made every later login for that account hit
+//     the "already pending" branch — silently skipping the
+//     overlay AND the email. This is the freeze the owner hit.
+//  2. OVERLAY REBUILD: if a valid challenge is pending but the
+//     overlay element is missing (e.g. the page was reloaded
+//     mid-challenge), the watcher rebuilds and shows it — the
+//     user is never left signed-out with an invisible challenge.
+//  3. window.BOS2FA.version now reports '1.5' so the live
+//     version is verifiable from the browser console.
+//
+// v1.4 FIXES (kept): session discovery + normalization (the
+// challenge fires whatever storage shape the CRM writes),
+// case-insensitive superadmin check with account-list fallback,
+// superadmin toast, missing-backend/missing-email warnings.
 // ============================================================
 (function () {
   'use strict';
@@ -32,7 +32,7 @@
   // Embedded in the shell's iframe? The shell (index.html) runs 2FA.
   try { if (window.self !== window.top) return; } catch (e) { return; }
 
-  var VERSION = '1.4';
+  var VERSION = '1.5';
   var SESSION_KEY = 'aetherion_user';
   var USERS_KEY = 'aetherion_users';
   var PENDING_KEY = 'aetherion_2fa_pending';
@@ -55,7 +55,7 @@
 
   function hasBackend() { return !!(ls(SYNC_URL_KEY) || '').trim(); }
 
-  // ---- session discovery (v1.4) ----
+  // ---- session discovery ----
   // Primary: 'aetherion_user'. Fallback: any storage key holding
   // a JSON object whose username matches a real account.
   function rawSession() {
@@ -90,7 +90,7 @@
     return null;
   }
 
-  // ---- session normalization (v1.4) ----
+  // ---- session normalization ----
   function normalizeSession(raw) {
     if (!raw || typeof raw !== 'object') return null;
     var s = {
@@ -117,11 +117,18 @@
     return r === 'superadmin';
   }
 
+  // ---- pending challenge (v1.5: expiry checked here) ----
   function getPending() {
-    try {
-      var p = JSON.parse(ls(PENDING_KEY) || 'null');
-      return (p && p.session && p.session.id) ? p : null;
-    } catch (e) { return null; }
+    var p = null;
+    try { p = JSON.parse(ls(PENDING_KEY) || 'null'); } catch (e) { return null; }
+    if (!p || !p.session || !p.session.id) { lsDel(PENDING_KEY); return null; }
+    if (typeof p.exp === 'number' && Date.now() > p.exp) {
+      // v1.5: expired challenge is dead — clear it so a fresh
+      // login gets a fresh PIN instead of a frozen no-op.
+      lsDel(PENDING_KEY);
+      return null;
+    }
+    return p;
   }
 
   function isVerified(id) {
@@ -216,7 +223,7 @@
     overlay = null;
   }
 
-  // ---- toast (v1.4): no more silent skips ----
+  // ---- toast: no more silent skips ----
   function toast(msg) {
     var t = document.getElementById('bos-2fa-toast');
     if (t) return;
@@ -328,7 +335,13 @@
     }
     if (isVerified(s.id)) { lsDel(PENDING_KEY); hideOverlay(); return; }
     var p = getPending();
-    if (p && p.session && p.session.id === s.id) return;
+    if (p && p.session && p.session.id === s.id) {
+      // v1.5: challenge valid but overlay missing (page was
+      // reloaded mid-challenge) — rebuild it so the user can
+      // actually finish signing in.
+      if (!document.getElementById('bos-2fa-overlay')) showOverlay(p);
+      return;
+    }
     startChallenge(s, found);
   }
 
