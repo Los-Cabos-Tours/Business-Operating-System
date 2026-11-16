@@ -14,6 +14,12 @@
        is attempted, so any account works on any computer or device.
        Same-origin with crm.html: both share the same localStorage. -->
   <script src="js/cross-device-login.js"></script>
+  <!-- Boot sync: pulls ALL shared data (main BOS + Student Loans) from
+       the configured sync backend before the app opens, so every
+       device shows the same information. Also auto-enables SLF sync
+       on every device (owner order: one shared backend, all data
+       shared with all users). -->
+  <script src="js/boot-sync.js"></script>
   <iframe id="bos-frame" src="crm.html" title="Aetherion"></iframe>
   <script>
     (function () {
