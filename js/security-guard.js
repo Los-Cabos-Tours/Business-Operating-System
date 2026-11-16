@@ -1,35 +1,32 @@
 // ============================================================
-// BOS Security Guard — demo-account lockout v1
+// BOS Security Guard — demo-account lockout v1.1
 // Owner order (2026-11-16): strangers are logging into the Los
 // Cabos Tours CRM. Root cause: crm.html ships DEFAULT_USERS —
 // 6 seeded demo logins with printed passwords — in a PUBLIC
-// GitHub repo. Anyone reading the repo can sign in. Worse, the
-// cross-device login feature synced those demo accounts to the
-// shared backend, so they now work from any device.
+// GitHub repo. On a FRESH browser (a stranger's), crm.html
+// re-seeds those active demo accounts into local storage, and
+// the printed passwords work. Cross-device sync also carried
+// them to the shared backend, so they work from any device.
 //
-// THIS FILE (loaded before crm.html via index.html) fixes it
-// on every device WITHOUT touching crm.html's login logic:
+// HOW THIS FIX WINS, on every device, WITHOUT touching
+// crm.html's login logic:
+//  - Any demo account still carrying its SHIPPED DEFAULT
+//    password is marked active:false. crm.html's own
+//    handleLogin()/getCurrentUser() already reject
+//    active === false, so those accounts stop working.
+//  - crm.html re-seeds demo accounts AFTER this script first
+//    runs (the iframe loads async), so enforcement REPEATS:
+//    immediately, on every storage change, and on a 2s poll
+//    for the first 2 minutes. The lockout always wins.
+//  - Any live session belonging to a disabled demo account
+//    is removed immediately.
+//  - Accounts whose password was CHANGED from the shipped
+//    default (the owner's real logins) are never touched.
 //
-//  1. If the demo accounts still carry their SHIPPED DEFAULT
-//     passwords, mark them active:false in aetherion_users.
-//     crm.html's own handleLogin()/getCurrentUser() already
-//     reject active === false, so the demo accounts stop
-//     working everywhere — including devices that pull the
-//     user list from the sync backend.
-//  2. If the current session belongs to a disabled demo
-//     account, remove the session immediately.
-//  3. Never touch an account whose password was CHANGED from
-//     the default — e.g. the owner's own login. Personalized
-//     accounts keep working untouched.
-//  4. The disabled list is written through the normal
-//     localStorage write path, so CloudSync pushes it to the
-//     backend and every other device gets the lockout too.
-//
-// WHAT THE OWNER MUST DO ONCE (only step needing the owner):
-// on the main computer, sign in and change the password of any
-// REAL account you want to keep (Users & Access). Any account
-// left on a shipped default password is treated as a demo and
-// disabled. That is the security rule, stated plainly.
+// WHAT THE OWNER MUST DO ONCE: keep only the accounts you
+// want, each with a password you changed from the default
+// (Users & Access). Anything left on a default password is
+// treated as a demo account and disabled — that is the rule.
 // ============================================================
 (function () {
   'use strict';
@@ -39,13 +36,16 @@
 
   // Shipped demo credentials, exactly as printed in crm.html.
   var DEFAULTS = {
-    'developer':    'Admin2026',
-    'ana':          'Cabos2026',
-    'carlos':       'Runner2026',
-    'sofia':        'Lobby2026',
-    'manuel':       'Drive2026',
+    'developer':     'Admin2026',
+    'ana':           'Cabos2026',
+    'carlos':        'Runner2026',
+    'sofia':         'Lobby2026',
+    'manuel':        'Drive2026',
     'leopobleteceo': 'Cabo2026'
   };
+
+  var POLL_MS = 2000;
+  var POLL_WINDOW_MS = 120000; // keep watching for 2 minutes after load
 
   function readUsers() {
     try {
@@ -60,36 +60,57 @@
     try { localStorage.setItem(USERS_KEY, JSON.stringify(users)); } catch (e) {}
   }
 
+  var enforcing = false;
   function enforce() {
-    var users = readUsers();
-    if (!users) return;
-
-    var disabledIds = {};
-    var changed = false;
-    users.forEach(function (u) {
-      if (!u || typeof u !== 'object') return;
-      var defPass = DEFAULTS[u.username];
-      if (defPass !== undefined && u.password === defPass && u.active !== false) {
-        u.active = false;
-        disabledIds[u.id] = true;
-        changed = true;
-      }
-    });
-
-    // Kill any live session that belongs to a disabled account.
+    if (enforcing) return; // never re-enter from our own write
+    enforcing = true;
     try {
-      var sess = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-      if (sess && disabledIds[sess.id]) {
-        localStorage.removeItem(SESSION_KEY);
-      }
-    } catch (e) {}
+      var users = readUsers();
+      if (!users) return;
 
-    if (changed) writeUsers(users);
+      var disabledIds = {};
+      var changed = false;
+      users.forEach(function (u) {
+        if (!u || typeof u !== 'object') return;
+        var defPass = DEFAULTS[u.username];
+        if (defPass !== undefined && u.password === defPass && u.active !== false) {
+          u.active = false;
+          disabledIds[u.id] = true;
+          changed = true;
+        }
+      });
+
+      // Kill any live session that belongs to a disabled account.
+      try {
+        var sess = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+        if (sess && disabledIds[sess.id]) {
+          localStorage.removeItem(SESSION_KEY);
+        }
+      } catch (e) {}
+
+      if (changed) writeUsers(users);
+    } finally {
+      enforcing = false;
+    }
+  }
+
+  function start() {
+    enforce();
+    // crm.html's iframe may seed/merge users at any moment after this
+    // script first runs — keep enforcing so the lockout always wins.
+    window.addEventListener('storage', function (e) {
+      if (!e.key || e.key === USERS_KEY || e.key === SESSION_KEY) enforce();
+    });
+    var startedAt = Date.now();
+    var timer = setInterval(function () {
+      enforce();
+      if (Date.now() - startedAt > POLL_WINDOW_MS) clearInterval(timer);
+    }, POLL_MS);
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', enforce);
+    document.addEventListener('DOMContentLoaded', start);
   } else {
-    enforce();
+    start();
   }
 })();
