@@ -23,11 +23,10 @@
        every non-superadmin account must enter a fresh 6-digit PIN emailed
        to their address on file. PIN expires after 2 minutes. Three wrong
        attempts block the login. Superadmin signs in at any time, no PIN.
-       v1.9: PIN is NEVER sent to the old dead backend; if the configured
-       URL is dead or missing, the PIN box shows a URL field — paste the
-       new /exec URL there, it saves as the system backend and sends the
-       PIN immediately. ?v=1.9 cache-busts. -->
-  <script src="js/two-factor.js?v=1.9"></script>
+       v2.0: no backend URL exists in the code. A DEAD LIST lives in the
+       browser's storage; adopting a new URL automatically kills the old
+       one; PIN only ever goes to the live backend. ?v=2.0 cache-busts. -->
+  <script src="js/two-factor.js?v=2.0"></script>
   <iframe id="bos-frame" src="crm.html" title="Aetherion"></iframe>
   <script>
     (function () {

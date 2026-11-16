@@ -1,39 +1,41 @@
 // ============================================================
-// BOS Two-Factor Authentication — email 6-digit PIN — v1.9
+// BOS Two-Factor Authentication — email 6-digit PIN — v2.0
 // Owner order (2026-11-16): every login must also enter a fresh
 // 6-digit PIN emailed to the user. SUPER ADMIN is exempt.
 // PIN expires after 2 MINUTES. Three wrong attempts block.
 //
-// v1.9 (owner order: "why would you send the pin to the old
-// dead backend"):
-//  1. NEVER SEND TO THE DEAD BACKEND. If the configured CloudSync
-//     URL is the old one (account lost, can never send email),
-//     the PIN is NOT sent there. Refused.
-//  2. URL FIELD ON THE PIN BOX. When the backend is missing or
-//     dead, the PIN box shows an input where the new /exec URL
-//     can be pasted directly. "Save URL & Send PIN" writes it to
-//     aetherion_sync_url (the same key the CRM's CloudSync
-//     settings read) and fires the PIN immediately.
-//  3. Kept: one backend only; Cancel = full sign-out + reload;
-//     resend = fresh code + fresh clock; verify reports attempts;
-//     expired challenges auto-clear.
+// v2.0 (owner order: "there should be no old AKfy in the code —
+// send only to the new one"):
+//  1. NO BACKEND URL IN THE CODE. The dead old URL is not
+//     written anywhere in this file. The app keeps a DEAD LIST
+//     in the browser's own storage (aetherion_dead_backends).
+//     URLs on that list are refused everywhere in this module.
+//  2. PASTE-TO-KILL: when a new backend URL is adopted (via the
+//     PIN-box field), the previously configured URL is added to
+//     the dead list automatically — it can never be used again.
+//  3. URL FIELD ON THE PIN BOX: if the backend is missing or on
+//     the dead list, the PIN box shows a paste field. Saving a
+//     fresh /exec URL there sets it as THE one backend, kills
+//     the old one, and sends the PIN immediately.
+//  4. Kept: one backend only; Cancel = full sign-out + reload;
+//     resend = fresh code + fresh clock; 3 wrong attempts block;
+//     expired challenges auto-clear; overlay survives reload.
 // ============================================================
 (function () {
   'use strict';
 
   try { if (window.self !== window.top) return; } catch (e) { return; }
 
-  var VERSION = '1.9';
+  var VERSION = '2.0';
   var SESSION_KEY = 'aetherion_user';
   var USERS_KEY = 'aetherion_users';
   var PENDING_KEY = 'aetherion_2fa_pending';
   var VERIFIED_KEY = 'aetherion_2fa_verified';
   var SYNC_URL_KEY = 'aetherion_sync_url';
+  var DEAD_LIST_KEY = 'aetherion_dead_backends';
   var PIN_TTL_MS = 2 * 60 * 1000;
   var VERIFIED_TTL_MS = 12 * 60 * 60 * 1000;
   var MAX_ATTEMPTS = 3;
-
-  var OLD_BACKEND_ID = 'AKfycbwnKUCCXJrgkzLU1z665lDnnU1B6voYeuvdU9INNmWfXgeHPsJAapGUNR9yEafoLlJY';
   var SCRIPT_URL_RE = /^https:\/\/script\.google[a-z.]*\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec/;
 
   function ls(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -47,16 +49,48 @@
     } catch (e) { return []; }
   }
 
-  function getSyncUrl() { return (ls(SYNC_URL_KEY) || '').trim(); }
-  function isOldBackend(url) {
-    return !!url && url.indexOf(OLD_BACKEND_ID) !== -1;
+  // ---- v2.0: dead list (lives in browser storage, not in code) ----
+  function getDeadList() {
+    try {
+      var a = JSON.parse(ls(DEAD_LIST_KEY) || '[]');
+      return Array.isArray(a) ? a : [];
+    } catch (e) { return []; }
   }
+  function isDeadUrl(url) {
+    if (!url) return false;
+    var list = getDeadList();
+    for (var i = 0; i < list.length; i++) {
+      if (url.indexOf(list[i]) !== -1) return true;
+    }
+    return false;
+  }
+  function addDeadUrl(url) {
+    if (!url) return;
+    var list = getDeadList();
+    var already = false;
+    for (var i = 0; i < list.length; i++) {
+      if (url.indexOf(list[i]) !== -1 || list[i].indexOf(url) !== -1) already = true;
+    }
+    if (!already) {
+      list.push(url);
+      lsSet(DEAD_LIST_KEY, JSON.stringify(list));
+    }
+  }
+
+  // ---- THE one backend ----
+  function getSyncUrl() { return (ls(SYNC_URL_KEY) || '').trim(); }
   function backendState() {
     var url = getSyncUrl();
     if (!url) return { ok: false, url: '', dead: false, missing: true };
-    if (isOldBackend(url)) return { ok: false, url: url, dead: true, missing: false };
+    if (isDeadUrl(url)) return { ok: false, url: url, dead: true, missing: false };
     if (!SCRIPT_URL_RE.test(url)) return { ok: false, url: url, dead: false, missing: false };
     return { ok: true, url: url, dead: false, missing: false };
+  }
+  // v2.0 paste-to-kill: adopting a new URL kills the old one forever
+  function adoptNewBackend(url) {
+    var old = getSyncUrl();
+    if (old && old !== url) addDeadUrl(old);
+    lsSet(SYNC_URL_KEY, url);
   }
 
   function setStatus(msg) {
@@ -64,6 +98,7 @@
     if (el) el.textContent = msg;
   }
 
+  // ---- session discovery ----
   function rawSession() {
     var s = null;
     try { s = JSON.parse(ls(SESSION_KEY) || 'null'); } catch (e) { s = null; }
@@ -152,11 +187,12 @@
     return null;
   }
 
+  // ---- email the PIN to THE one live backend ----
   function sendPinEmail(email, pin, username) {
     var st = backendState();
     if (!st.ok) {
-      if (st.dead) return { sent: false, url: st.url, dead: true, error: 'the configured backend is the OLD DEAD one — send REFUSED' };
-      if (st.missing) return { sent: false, url: '', dead: false, error: 'no CloudSync backend URL is configured on this device' };
+      if (st.dead) return { sent: false, url: st.url, dead: true, error: 'the configured backend is on the dead list — send REFUSED' };
+      if (st.missing) return { sent: false, url: '', dead: false, error: 'no backend URL is configured on this device' };
       return { sent: false, url: st.url, dead: false, error: 'the configured URL is not a valid Apps Script /exec URL' };
     }
     var payload = {
@@ -175,6 +211,7 @@
     }
   }
 
+  // ---- overlay UI ----
   var overlay = null;
   function buildOverlay() {
     if (document.getElementById('bos-2fa-overlay')) return;
@@ -238,7 +275,7 @@
     if (st.ok) { row.style.display = 'none'; return; }
     row.style.display = 'block';
     if (st.dead) {
-      reason.textContent = 'The configured backend is the OLD DEAD one. Paste your NEW /exec URL below — it will be saved as the system backend and the PIN sent there immediately.';
+      reason.textContent = 'The configured backend is on the dead list. Paste your NEW /exec URL below — it will be saved as the system backend and the PIN sent there immediately.';
     } else if (st.missing) {
       reason.textContent = 'No backend URL is configured. Paste your NEW /exec URL below — it will be saved as the system backend and the PIN sent there immediately.';
     } else {
@@ -255,11 +292,11 @@
       setStatus('That does not look like an Apps Script /exec URL. It must start with https://script.google.com/ and end with /exec.');
       return;
     }
-    if (isOldBackend(url)) {
-      setStatus('That is the OLD DEAD backend URL — it can never email you. Paste the NEW one from your NEW Google account.');
+    if (isDeadUrl(url)) {
+      setStatus('That URL is on the dead list — it can never be used. Paste the NEW one.');
       return;
     }
-    lsSet(SYNC_URL_KEY, url);
+    adoptNewBackend(url);
     var r = sendPinEmail(p.email, p.pin, p.session.username);
     if (r.sent) {
       setStatus('URL SAVED and PIN sent to the new backend:\n' + url + '\nCheck ' + (p.email ? maskEmail(p.email) : 'your email') + ' (and spam).');
@@ -310,7 +347,7 @@
       if (r.sent) {
         setStatus('PIN request SENT to the one backend:\n' + r.url + '\nCheck that address (and spam) — code expires in 2 minutes.');
       } else if (r.dead) {
-        setStatus('PIN NOT SENT — REFUSED. The configured backend is the OLD DEAD one:\n' + r.url + '\nPaste your NEW /exec URL in the box below and press Save URL & Send.');
+        setStatus('PIN NOT SENT — REFUSED. The configured backend is on the dead list:\n' + r.url + '\nPaste your NEW /exec URL in the box below and press Save URL & Send.');
       } else {
         setStatus('PIN request NOT SENT — ' + r.error + '.\nIf you have a new URL, paste it in the box below.');
       }
@@ -334,7 +371,7 @@
       if (r.sent) {
         setStatus('RESENT to the one backend:\n' + r.url);
       } else if (r.dead) {
-        setStatus('RESEND REFUSED — the configured backend is the OLD DEAD one.\nPaste your NEW /exec URL in the box below and press Save URL & Send.');
+        setStatus('RESEND REFUSED — the configured backend is on the dead list.\nPaste your NEW /exec URL in the box below and press Save URL & Send.');
       } else {
         setStatus('RESEND FAILED — ' + r.error + '.\nIf you have a new URL, paste it in the box below.');
       }
