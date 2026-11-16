@@ -1,4 +1,4 @@
-// SLF Board main controller (split 5/5) v4
+// SLF Board main controller (split 5/5) v5
 'use strict';
 (function () {
   function displayLine(tab, r) {
@@ -35,18 +35,22 @@
       return;
     }
     document.getElementById('view-title').textContent = 'Client Dashboard';
+    // Update Status dropdown goes INLINE in the header row, right
+    // after the client name and ID badge. Its own inline styles —
+    // no shared class that could push it to the right side.
     var stageSelect = SLFBoard.panel.stageSelectHtml ? SLFBoard.panel.stageSelectHtml(c) : '';
     v.innerHTML =
       '<style>' + SLFBoard.css() + '</style>' +
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
       '<span class="bbkname">' + SLFBoard.esc(c.name) + '</span>' +
       '<span class="btagid">' + SLFBoard.esc(c.id) + '</span>' +
+      (stageSelect ?
+        '<span style="display:inline-flex;align-items:center;gap:8px;margin:0;">' + stageSelect + '</span>' : '') +
       '<span style="flex:1;"></span>' +
       '<button class="bact" onclick="SLF.openCaseModal()">+ New Case</button>' +
       '<button class="bact ghost" onclick="SLFBoard.exportClient()">Export</button>' +
       '<button class="bact danger" onclick="SLFBoard.deleteConfirm()">Delete</button>' +
       '</div>' +
-      (stageSelect ? '<div class="frow" style="margin:0 0 14px 0;">' + stageSelect + '</div>' : '') +
       '<div class="bwrap">' +
       '<div class="bleft">' + SLFBoard.panel.infoPanel(c) + '</div>' +
       '<div class="bright">' +
