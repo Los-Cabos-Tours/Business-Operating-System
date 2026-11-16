@@ -29,7 +29,6 @@
   function render() {
     var v = document.getElementById('view');
     if (!v) return;
-    var st = SLFBoard.state();
     var c = SLFBoard.client();
     if (!c) {
       v.innerHTML = '<div class="empty">Client not found. <a href="#" onclick="SLFBoard.close();return false;">Back to Clients</a></div>';
@@ -57,7 +56,8 @@
   }
   SLFBoard.render = render;
 
-  SLFBoard.setTab = function (t) { SLFBoard._setTab(t); render(); };
+  var rawSetTab = SLFBoard.setTab;
+  SLFBoard.setTab = function (t) { rawSetTab(t); render(); };
 
   SLFBoard.addFromForm = function () {
     var st = SLFBoard.state();
@@ -116,9 +116,8 @@
     if (!el) return;
     el.textContent = msg;
     el.style.display = 'inline';
-    clearTimeout(SLFBoard._timer());
-    var t = setTimeout(function () { el.style.display = 'none'; }, 2500);
-    SLFBoard._setTimer(t);
+    clearTimeout(SLFBoard.state().saveTimer);
+    SLFBoard.setSaveTimer(setTimeout(function () { el.style.display = 'none'; }, 2500));
   }
 
   SLFBoard.quickEmail = function () {
@@ -169,7 +168,7 @@
 
   SLFBoard.open = function (clientId) {
     SLFBoard.setClientId(clientId);
-    SLFBoard._setTab('history');
+    rawSetTab('history');
     render();
   };
 
