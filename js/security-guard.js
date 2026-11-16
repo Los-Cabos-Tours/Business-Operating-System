@@ -1,32 +1,16 @@
 // ============================================================
-// BOS Security Guard — demo-account lockout v1.1
-// Owner order (2026-11-16): strangers are logging into the Los
-// Cabos Tours CRM. Root cause: crm.html ships DEFAULT_USERS —
-// 6 seeded demo logins with printed passwords — in a PUBLIC
-// GitHub repo. On a FRESH browser (a stranger's), crm.html
-// re-seeds those active demo accounts into local storage, and
-// the printed passwords work. Cross-device sync also carried
-// them to the shared backend, so they work from any device.
-//
-// HOW THIS FIX WINS, on every device, WITHOUT touching
-// crm.html's login logic:
-//  - Any demo account still carrying its SHIPPED DEFAULT
-//    password is marked active:false. crm.html's own
-//    handleLogin()/getCurrentUser() already reject
-//    active === false, so those accounts stop working.
-//  - crm.html re-seeds demo accounts AFTER this script first
-//    runs (the iframe loads async), so enforcement REPEATS:
-//    immediately, on every storage change, and on a 2s poll
-//    for the first 2 minutes. The lockout always wins.
-//  - Any live session belonging to a disabled demo account
-//    is removed immediately.
-//  - Accounts whose password was CHANGED from the shipped
-//    default (the owner's real logins) are never touched.
-//
-// WHAT THE OWNER MUST DO ONCE: keep only the accounts you
-// want, each with a password you changed from the default
-// (Users & Access). Anything left on a default password is
-// treated as a demo account and disabled — that is the rule.
+// BOS Security Guard — demo-account lockout v2
+// FIX (owner order, 2026-11-16): v1 disabled the owner's own
+// superadmin account because it still carried a shipped demo
+// password, locking the owner out of their own system.
+// v2 rules:
+//   RULE 1 — a superadmin account is NEVER disabled. If a
+//   previous guard run disabled it, v2 re-activates it
+//   automatically (self-repair).
+//   RULE 2 — non-superadmin accounts still on a shipped
+//   default password remain disabled (strangers use those
+//   printed passwords). Accounts with changed passwords are
+//   untouched.
 // ============================================================
 (function () {
   'use strict';
@@ -62,7 +46,7 @@
 
   var enforcing = false;
   function enforce() {
-    if (enforcing) return; // never re-enter from our own write
+    if (enforcing) return;
     enforcing = true;
     try {
       var users = readUsers();
@@ -72,6 +56,14 @@
       var changed = false;
       users.forEach(function (u) {
         if (!u || typeof u !== 'object') return;
+
+        // RULE 1: superadmin is untouchable; repair if v1 disabled it.
+        if (u.role === 'superadmin') {
+          if (u.active === false) { u.active = true; changed = true; }
+          return;
+        }
+
+        // RULE 2: non-superadmin on a shipped default password = demo account.
         var defPass = DEFAULTS[u.username];
         if (defPass !== undefined && u.password === defPass && u.active !== false) {
           u.active = false;
@@ -80,7 +72,6 @@
         }
       });
 
-      // Kill any live session that belongs to a disabled account.
       try {
         var sess = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
         if (sess && disabledIds[sess.id]) {
@@ -96,8 +87,6 @@
 
   function start() {
     enforce();
-    // crm.html's iframe may seed/merge users at any moment after this
-    // script first runs — keep enforcing so the lockout always wins.
     window.addEventListener('storage', function (e) {
       if (!e.key || e.key === USERS_KEY || e.key === SESSION_KEY) enforce();
     });
