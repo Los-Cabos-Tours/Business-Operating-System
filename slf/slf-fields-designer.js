@@ -119,7 +119,7 @@ var SLFFieldsDesigner = (function () {
     var cards = document.querySelectorAll('[data-sid]');
     Array.prototype.forEach.call(cards, function (c) {
       c.addEventListener('dragover', function (e) { e.preventDefault(); });
-      c.addEventListener('drop', blockers function (e) {
+      c.addEventListener('drop', function (e) {
         e.preventDefault();
         e.stopPropagation();
         if (!_dragId) return;
