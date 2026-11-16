@@ -7,7 +7,7 @@
 //      Analysis action in this bar opens the same budget
 //      workspace, so the tab exists exactly once.
 // Everything else identical to v2 (bind on DOMContentLoaded,
-// 9 actions, #34's Update Status block untouched).
+// #34's Update Status block untouched).
 'use strict';
 (function () {
   if (!window.SLFBoard) return;
@@ -21,7 +21,7 @@
       }
       return '<div class="fnav" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:0 0 12px 0;padding:8px 12px;background:rgba(15,32,64,0.35);border:1px solid var(--line);border-radius:10px;">' +
         item('Edit Contact', 'edit') +
-        item('Clone', 'bar-clone') +
+        item('Clone', 'clone') +
         item('Create Order', 'order') +
         item('Budget Analysis', 'budget') +
         item('Creditors', 'creditors') +
@@ -29,7 +29,7 @@
         item('Settlements', 'settlements') +
         '<span class="fnavi" style="color:var(--gold);font-size:12px;cursor:pointer;white-space:nowrap;" onclick="SLFBoard.setTab(\'alerts\');setTimeout(function(){var f=document.getElementById(\'q-aname\');if(f)f.focus();},60)">Add Alert</span>' +
         '<span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px;">' +
-        '<span style="color:real(--muted);font-size:11px;">Favorites</span>' +
+        '<span style="color:var(--muted);font-size:11px;">Favorites</span>' +
         '<select id="fav-select" style="width:auto;max-width:150px;padding:4px 8px;font-size:11px;background:rgba(10,22,40,0.6);border:1px solid var(--line);border-radius:6px;color:var(--text);">' +
         '<option value="">— select —</option></select></span>' +
         '</div>';
@@ -42,7 +42,6 @@
         case 'edit':
           if (window.SLF) SLF.openClientModal(SLF.clientById(c.id));
           break;
-        case 'bar-clone':
         case 'clone':
           if (window.SLF && SLF.openClientModal) {
             var src = SLF.clientById(c.id);
@@ -52,7 +51,7 @@
               document.getElementById('c-name').value = (src.name || '') + ' (Copy)';
               document.getElementById('c-email').value = src.email || '';
               document.getElementById('c-phone').value = src.phone || '';
-              document.getElementById('c-notes').value = src-notes || '';
+              document.getElementById('c-notes').value = src.notes || '';
             }, 50);
           }
           break;
@@ -61,7 +60,7 @@
           break;
         case 'creditors':
           SLFBoard.setTab('debts');
-          clicking
+          break;
         case 'enrollment':
           SLFBoard.setTab('loans');
           break;
@@ -76,7 +75,6 @@
   }
 
   if (document.readyState === 'loading') {
-    document
     document.addEventListener('DOMContentLoaded', bindActionBar);
   } else {
     bindActionBar();
