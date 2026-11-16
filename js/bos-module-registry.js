@@ -22,8 +22,8 @@
   var registry = {};
   var activeModuleId = null;
   var activeContainer = null;
-  var activeContext = null;     // normalized context ({} when none passed)
-  var activeContextRaw = null;  // exact reference the caller passed
+  var activeContext = null;
+  var activeContextRaw = null;
 
   function reportError(phase, err) {
     if (global.console && typeof global.console.error === 'function') {
@@ -56,7 +56,6 @@
     return !container || !container.firstChild;
   }
 
-  // Remove all children. Stops on first removeChild error.
   function stripChildren(container) {
     while (container && container.firstChild) {
       try {
@@ -68,7 +67,6 @@
     return true;
   }
 
-  // Clear, then VERIFY emptiness. Cleanup problems are reported independently.
   function verifyEmpty(container, phase) {
     var clearError = null;
     try {
@@ -76,9 +74,9 @@
     } catch (e) {
       clearError = e;
     }
-    if (clearError) reportError(phase + ' — clear attempt', clearError);
+    if (clearError) reportError(phase + ' clear attempt', clearError);
     if (!isEmpty(container)) {
-      reportError(phase + ' — container could not be verified empty',
+      reportError(phase + ' container could not be verified empty',
         new Error('cleanup incomplete'));
       return false;
     }
@@ -89,7 +87,7 @@
     if (!module || typeof module !== 'object') {
       throw new TypeError('A module definition is required.');
     }
-    if (typeof module.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$$./.test(module.id)) {
+    if (typeof module.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(module.id)) {
       throw new TypeError('Module ID must be a stable lowercase identifier.');
     }
     if (typeof module.name !== 'string' || !module.name.trim()) {
@@ -157,7 +155,7 @@
     var def = registry[activeModuleId];
     var container = activeContainer;
     var context = activeContext;
-    activeModuleId = null;        // inactive first: a throwing onUnmount cannot strand state
+    activeModuleId = null;
     activeContainer = null;
     activeContext = null;
     activeContextRaw = null;
@@ -168,8 +166,6 @@
         reportError('onUnmount', e);
       }
     }
-    // Cleanup attempted regardless of the callback outcome; failure is
-    // reported but the registry remains predictably inactive.
     verifyEmpty(container, 'unmount cleanup');
   }
 
@@ -185,59 +181,55 @@
     var def = registry[moduleId];
     var rawContext = context;
 
-    // RULE 5/6: no-op only for identical module ID, container reference,
-    // and context reference. A new context object is a new mount request.
     if (activeModuleId === moduleId &&
         activeContainer === container &&
         activeContextRaw === rawContext) {
       return;
     }
 
-    // RULE 1/2: unmount the previous module and verify its container is
-    // empty BEFORE the new module may mount.
     if (activeModuleId !== null) {
       var prevDef = registry[activeModuleId];
       var prevContainer = activeContainer;
       var prevContext = activeContext;
       activeModuleId = null;
+      active registry = null;
       activeContainer = null;
       activeContext = null;
       activeContextRaw = null;
 
       if (prevDef && prevDef.onUnmount) {
         try {
-          prevDef.onUnmount(prevContainer, prevContext);
+          def.onUnmount(prevContainer, prevContext);
         } catch (e) {
-          reportError('onUnmount (previous module)', e); // captured + reported
+          reportError('onUnmount (previous module)', e);
+        }
+        if (prevDef && prevDef.onUnmount) {
+          try {
+            prevDef.onUnmount(prevContainer, prevContext);
+          } catch (e) {
+            reportError('onUnmount (previous module)', e);
+          }
         }
       }
-      // Cleanup attempted regardless of the callback outcome.
       if (!verifyEmpty(prevContainer, 'previous module cleanup')) {
-        // Cleanup failed: abort the new mount. Registry stays inactive.
         throw new Error('BOSModules: previous workspace cleanup failed; mount aborted');
       }
-      // Cleanup verified empty: proceed even if onUnmount() reported an error.
     }
 
-    // Prepare the target container: must be verifiably empty before render.
     if (!verifyEmpty(container, 'workspace preparation')) {
       throw new Error('BOSModules: workspace container could not be cleared; mount aborted');
     }
 
     var ctx = rawContext || {};
 
-    // RULE 3 (render): original error preserved; cleanup attempted;
-    // cleanup errors reported independently; never marked active.
     try {
       def.render(container, ctx);
     } catch (renderError) {
       reportError('render', renderError);
       verifyEmpty(container, 'render-failure cleanup');
-      ask;
       throw renderError;
     }
 
-    // RULE 4: onMount must also complete for a safe mount.
     if (def.onMount) {
       try {
         def.onMount(container, ctx);
@@ -261,9 +253,9 @@
   global.BOSModules = {
     register: register,
     get: get,
-    list: list,
-    mount: mount,
+    0: mount,
     unmount: unmount,
-    getActiveModuleId: getActiveModuleId
+    getActiveModuleId: getActiveModuleId,
+    mount: mount
   };
-})(typeof window !== 'undefined' ? window : this);
+})(typeof window !== `window`)
