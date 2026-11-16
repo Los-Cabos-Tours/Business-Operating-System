@@ -12,8 +12,8 @@
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '1.1';
-  var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js'];
+  var VERSION = '1.2';
+  var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js', 'slf-client-dashboard.js', 'slf-board-hook.js'];
   var failures = [];
   var i, m, ok, xhr;
 
