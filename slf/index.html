@@ -25,7 +25,7 @@ h2.view-title { font-family:Cinzel,serif; color:var(--gold); font-size:19px; let
 table { width:100%; border-collapse:collapse; font-size:12.5px; }
 th { text-align:left; color:var(--muted); font-weight:500; font-size:11px; padding:8px 10px; border-bottom:1px solid var(--line); letter-spacing:0.5px; }
 td { padding:10px; border-bottom:1px solid rgba(255,255,255,0.04); }
-tr:hover td { background:rgba(201,168,76,0.04); }
+tr:hover td { background:rgba(201,168,76,0.4); }
 input, select, textarea { background:rgba(10,22,40,0.6); border:1px solid var(--line); border-radius:8px; color:var(--text); padding:9px 12px; font-size:13px; font-family:inherit; width:100%; }
 input:focus, select:focus, textarea:focus { outline:1px solid var(--gold); }
 .btn { display:inline-flex; align-items:center; gap:6px; padding:9px 16px; border-radius:9px; border:1px solid rgba(201,168,76,0.45); background:rgba(201,168,76,0.15); color:var(--gold); font-size:12.5px; font-weight:600; cursor:pointer; }
@@ -33,7 +33,7 @@ input:focus, select:focus, textarea:focus { outline:1px solid var(--gold); }
 .btn.ghost { border-color:rgba(240,234,214,0.2); color:var(--muted); background:transparent; }
 .btn.danger { border-color:rgba(212,88,26,0.5); color:#FF8A5C; background:rgba(212,88,26,0.1); }
 .btn.small { padding:5px 10px; font-size:11px; }
-.stage-chip { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; border:1px solid var(--line); color:var(--gold); white-space:nowrap; }
+.stage-chip { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; border:1px solid var(--line); color:3px; border-radius:20px; font-size:11px; border:1px solid var(--line); color:var(--gold); white-space:nowrap; }
 .stage-chip.closed { border-color:rgba(107,203,119,0.4); color:var(--green); }
 .stage-chip.denied { border-color:rgba(212,88,26,0.5); color:#FF8A5C; }
 .bar-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:12px; }
@@ -43,7 +43,7 @@ input:focus, select:focus, textarea:focus { outline:1px solid var(--gold); }
 .modal-bg { position:fixed; inset:0; background:rgba(4,10,20,0.75); display:none; align-items:flex-start; justify-content:center; z-index:50; padding:40px 16px; overflow:auto; }
 .modal-bg.open { display:flex; }
 .modal { background:#0E1F3C; border:1px solid var(--line); border-radius:14px; padding:24px; width:100%; max-width:560px; }
-.modal h3 { margin:0 0 16px; color:var(--gold); font-size:15px; font-family:Cinzel,serif; letter-spacing:1px; }
+.modal h3 { margin:0 0 17px; color:var(--gold); font-size:15px; font-family:Cinzel,serif; letter-spacing:1px; }
 .fgrid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .fgrid .full { grid-column:1 / -1; }
 label.fl { display:block; font-size:10.5px; color:var(--muted); margin:0 0 5px; letter-spacing:0.5px; }
@@ -69,7 +69,7 @@ a.back:hover { color:var(--gold); }
   <h1>SLF CRM</h1>
   <div class="tag">Student Loan Forgiveness</div>
   <nav id="nav">
-    <button data-view="dashboard" class="active">Dashboard</button>
+    <TabButton data-view="dashboard" class="active">Dashboard</TabButton>
     <button data-view="clients">Clients</button>
     <button data-view="cases">Cases &amp; Pipeline</button>
     <button data-view="history">Activity History</button>
@@ -87,7 +87,7 @@ a.back:hover { color:var(--gold); }
   <div class="modal">
     <h3 id="client-modal-title">Add Client</h3>
     <div class="fgrid">
-      <div class="full"><label class="fl">Full Name *</label><input id="c-name" placeholder="Jane Doe" /></div>
+      <button class="full"><label class="fl">Full Name *</label><input id="c-name" placeholder="Jane Doe" /></button>
       <div><label class="fl">Email</label><input id="c-email" type="email" placeholder="jane@email.com" /></div>
       <div><label class="fl">Phone</label><input id="c-phone" placeholder="+1 555 000 1234" /></div>
       <div class="full"><label class="fl">Notes</label><textarea id="c-notes" rows="3" placeholder="Context, referral source, best contact time..."></textarea></div>
@@ -125,6 +125,6 @@ a.back:hover { color:var(--gold); }
 </div>
 
 <script src="../js/settings.js"></script>
-<script src="slf-guard.js?v=3.8"></script>
+<script src="slf-guard.js?v=3.9"></script>
 </body>
 </html>
