@@ -20,8 +20,8 @@
 //     cleared on sign-out). PINs expire after 10 minutes.
 //
 // EMAIL DELIVERY: the sync backend (Apps Script) must include
-// the email handler (see PR description). Without it, no email
-// can be sent — the overlay says so plainly.
+// the email handler (see repo docs). Without it, no email can
+// be sent — the overlay says so plainly.
 //
 // SECURITY NOTES, stated honestly:
 //  - The PIN is verified on this device. This stops a leaked
@@ -146,8 +146,6 @@
       attempts: 0
     };
     lsSet(PENDING_KEY, JSON.stringify(pending));
-    // Hold the session back until the PIN is proven: the CRM's own
-    // gate re-engages behind the overlay.
     lsDel(SESSION_KEY);
     if (email) sendPinEmail(email, pin, session.username);
     showOverlay(pending);
@@ -189,8 +187,6 @@
       errEl.textContent = 'Wrong code. ' + (MAX_ATTEMPTS - p.attempts) + ' attempts left.';
       return;
     }
-    // Success: mark this account verified on this device and
-    // restore the session so the CRM signs in normally.
     lsSet(VERIFIED_KEY, JSON.stringify({ id: p.session.id, exp: Date.now() + VERIFIED_TTL_MS }));
     lsSet(SESSION_KEY, JSON.stringify(p.session));
     lsDel(PENDING_KEY);
@@ -203,20 +199,20 @@
   function tick() {
     var s = getSession();
     if (!s) {
-      // Signed out (or held back): any verified state is void —
-      // every NEW sign-in must earn a fresh PIN. Never clear a
-      // pending challenge here (the CRM gate is intentionally
-      // showing behind it).
+      // Signed out (or held back): verified state is void — every
+      // NEW sign-in must earn a fresh PIN. Never clear a pending
+      // challenge here (the CRM gate is intentionally showing
+      // behind it).
+      lsDel(VERIFIED_KEY);
       return;
     }
     if (s.role === 'superadmin') {
-      // Owner order: superadmin signs in at any time, no PIN.
       lsDel(PENDING_KEY);
       hideOverlay();
       return;
     }
     if (isVerified(s.id)) { lsDel(PENDING_KEY); hideOverlay(); return; }
-    if (getPending() && getPending().session.id === s.id) return; // challenge already running
+    if (getPending() && getPending().session.id === s.id) return;
     startChallenge(s);
   }
 
