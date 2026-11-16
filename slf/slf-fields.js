@@ -3,13 +3,16 @@
 // Self-contained (mirrors the slf-sync.js injection pattern):
 //  - Adds a "Custom Fields" nav view with its own click binding
 //    (SLF.bindNav only binds buttons that exist at init time).
+//  - FULLY ORDERABLE: every field can be moved up/down in the
+//    designer; the chosen order is the display order in the
+//    Add/Edit forms and the table views.
 //  - Injects custom inputs into the existing client/case modals
 //    by wrapping SLF methods at runtime — slf-app.js is untouched.
 //  - Custom values live INSIDE each record (record.custom), so
 //    existing sync carries them automatically. Field definitions
 //    and e-sign data ride in backups via a superset bundle
 //    (format stays 'slf-backup'; old files still import fine).
-// Definitions key: slf_crm.fielddefs.v1
+// Definitions key: slf_crm.fielddefs.v1 (array order = display order)
 // ============================================================
 'use strict';
 var SLFFields = (function () {
@@ -28,6 +31,7 @@ var SLFFields = (function () {
     try { localStorage.setItem(KEY, JSON.stringify(list)); return true; }
     catch (e) { alert('SLF: could not save field definitions — storage full or blocked.'); return false; }
   }
+  // Array order IS the display order — list() preserves it.
   function list(entity) { return defs().filter(function (f) { return f.entity === entity; }); }
 
   // ---------- form inputs ----------
@@ -87,10 +91,16 @@ var SLFFields = (function () {
     var v = document.getElementById('view');
     if (!v) return;
     var fs = defs();
-    var rows = fs.map(function (f) {
-      return '<tr><td>' + esc(f.entity === 'client' ? 'Client' : 'Case') + '</td><td>' + esc(f.label) +
-        '</td><td>' + esc(f.type) + '</td><td>' + esc(f.type === 'select' ? (f.options || '') : '—') +
+    var rows = fs.map(function (f, ix) {
+      var pos = ix + 1;
+      return '<tr><td>' + esc(f.entity === 'client' ? 'Client' : 'Case') + '</td>' +
+        '<td>' + pos + '</td>' +
+        '<td>' + esc(f.label) + '</td><td>' + esc(f.type) + '</td><td>' + esc(f.type === 'select' ? (f.options || '') : '—') +
         '</td><td>' + (f.required ? 'Yes' : 'No') + '</td>' +
+        '<td><button class="btn small ghost" ' + (ix === 0 ? 'disabled' : '') +
+        ' onclick="SLFFields.moveField(\'' + esc(f.id) + '\', -1)" title="Move up">&#9650;</button> ' +
+        '<button class="btn small ghost" ' + (ix === fs.length - 1 ? 'disabled' : '') +
+        ' onclick="SLFFields.moveField(\'' + esc(f.id) + '\', 1)" title="Move down">&#9660;</button></td>' +
         '<td><button class="btn small danger" onclick="SLFFields.removeField(\'' + esc(f.id) + '\')">Delete</button></td></tr>';
     }).join('');
     var typeOpts = TYPES.map(function (t) { return '<option>' + t + '</option>'; }).join('');
@@ -104,8 +114,8 @@ var SLFFields = (function () {
       '</div><div class="modal-actions" style="justify-content:flex-start;"><button class="btn" onclick="SLFFields.addField()">Add Field</button></div></div>' +
       '<div class="card"><h3>Your Custom Fields</h3>' +
       (fs.length
-        ? '<table><thead><tr><th>On</th><th>Label</th><th>Type</th><th>Options</th><th>Required</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' +
-          '<p class="notice">Custom fields appear automatically in the add/edit forms and tables for Clients and Cases, are validated when required, and travel inside every backup.</p>'
+        ? '<table><thead><tr><th>On</th><th>#</th><th>Label</th><th>Type</th><th>Options</th><th>Required</th><th>Order</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' +
+          '<p class="notice">Fields display in the order shown — use the up/down arrows to set exactly which field comes 1st, 2nd, 3rd and so on in the forms and tables. The order applies separately per tab (all Client fields keep their order on the Clients tab, all Case fields on the Cases tab). Custom fields appear automatically in the add/edit forms and tables, are validated when required, and travel inside every backup.</p>'
         : '<div class="empty">No custom fields yet. Add your first above — e.g. "Date of Birth" on Clients, or "Forgiveness Eligibility Date" on Cases.</div>') +
       '</div>';
   }
@@ -129,6 +139,22 @@ var SLFFields = (function () {
     all.push(f);
     if (!saveDefs(all)) return;
     if (window.SLF) SLF.log('fields', 'custom field', '"' + label + '" (' + type + ') added to ' + entity + 's');
+    renderDesigner();
+  }
+
+  // ---------- ordering: swap a field with its neighbor ----------
+  function moveField(id, dir) {
+    var all = defs();
+    var ix = -1;
+    for (var i = 0; i < all.length; i++) { if (all[i] && all[i].id === id) ix = i; }
+    if (ix < 0) return;
+    var target = ix + dir;
+    if (target < 0 || target >= all.length) return; // already at the top/bottom
+    var tmp = all[ix];
+    all[ix] = all[target];
+    all[target] = tmp;
+    if (!saveDefs(all)) return;
+    if (window.SLF) SLF.log('fields', 'custom field', '"' + all[target].label + '" moved ' + (dir < 0 ? 'up' : 'down'));
     renderDesigner();
   }
 
@@ -344,6 +370,6 @@ var SLFFields = (function () {
 
   return {
     list: list, modalHtml: modalHtml, readInputs: readInputs,
-    renderDesigner: renderDesigner, addField: addField, removeField: removeField
+    renderDesigner: renderDesigner, addField: addField, moveField: moveField, removeField: removeField
   };
 })();
