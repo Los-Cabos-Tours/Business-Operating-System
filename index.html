@@ -23,10 +23,11 @@
        every non-superadmin account must enter a fresh 6-digit PIN emailed
        to their address on file. PIN expires after 2 minutes. Three wrong
        attempts block the login. Superadmin signs in at any time, no PIN.
-       v1.8: ONE backend — the PIN goes only to the CloudSync URL; if that
-       URL is the old dead backend, the PIN box says so on screen. Cancel
-       = full sign-out. ?v=1.8 cache-busts. -->
-  <script src="js/two-factor.js?v=1.8"></script>
+       v1.9: PIN is NEVER sent to the old dead backend; if the configured
+       URL is dead or missing, the PIN box shows a URL field — paste the
+       new /exec URL there, it saves as the system backend and sends the
+       PIN immediately. ?v=1.9 cache-busts. -->
+  <script src="js/two-factor.js?v=1.9"></script>
   <iframe id="bos-frame" src="crm.html" title="Aetherion"></iframe>
   <script>
     (function () {
