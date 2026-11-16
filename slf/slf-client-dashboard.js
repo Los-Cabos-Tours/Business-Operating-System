@@ -5,14 +5,12 @@
 //  - Left panel: Client Information (name, contact info, custom
 //    fields, quick actions — email opens Quick Email, phone
 //    opens Log Call)
-//  - Top action bar: Edit Client, New Case, Send Doc for
-//    Signature, Export (JSON), Delete
+//  - Top action bar: Edit Client, New Case, Export (JSON), Delete
 //  - Nested tabs: History, Calls, Emails, Notes, Docs, Tasks,
 //    Loans, Bank Accounts, Credit Cards, Debts, Events, SMS,
 //    E-Marketing — each with working local storage and its own
 //    quick-add form.
-// All data rides in backups and cloud sync via SLFFields hook
-// (data stored in slf_crm.clientboard.v1).
+// Data key: slf_crm.clientboard.v1
 // ============================================================
 'use strict';
 var SLFBoard = (function () {
@@ -68,10 +66,12 @@ var SLFBoard = (function () {
     render();
     return true;
   }
-  function removeItem(clientId, tab, id) {
+  function removeItem(id) {
     var d = all();
-    if (!d[clientId] || !d[clientId][tab]) return;
-    d[clientId][tab] = d[clientId][tab].filter(function (x) { return x.id !== id; });
+    if (!d[_clientId]) return;
+    Object.keys(d[_clientId]).forEach(function (tab) {
+      d[_clientId][tab] = d[_clientId][tab].filter(function (x) { return x.id !== id; });
+    });
     saveAll(d);
     render();
   }
@@ -138,9 +138,9 @@ var SLFBoard = (function () {
       return '<div class="ci-row"><span class="ci-l">' + esc(k.id) + '</span><span>' + esc(k.program) + ' — ' + esc(window.SLF ? SLF.stageName(k.stage) : k.stage) + '</span></div>';
     }).join('');
     return '<div class="card"><h3>Client Information</h3>' +
-      '<div class="ci-row"><span class="ci-l">Client ID</span><span>' + esc(c.id) + '</span></div>' +
-      '<div class="ci-row"><span class="ci-l">Email</span><span><a href="#" onclick="SLFBoard.quickEmail();return false;" style="color:var(--gold);">' + esc(c.email || '—') + '</a></span></div>' +
-      '<div class="ci-row"><span class="ci-l">Phone</span><span><a href="#" onclick="SLFBoard.logCall();return false;" style="color:var(--gold);">' + esc(c.phone || '—') + '</a></span></div>' +
+      '<div style="border-bottom:1px solid rgba(255,255,255,0.06);padding:6px 0;font-size:12.5px;"><span style="color:var(--muted);font-size:11px;">Client ID</span> <strong>' + esc(c.id) + '</strong></div>' +
+      '<div style="border-bottom:1px solid rgba(255,255,255,0.06);padding:6px 0;font-size:12.5px;"><span style="color:var(--muted);font-size:11px;">Email</span> <a href="#" onclick="SLFBoard.quickEmail();return false;" style="color:var(--gold);">' + esc(c.email || '—') + '</a></div>' +
+      '<div style="border-bottom:1px solid rgba(255,255,255,0.06);padding:6px 0;font-size:12.5px;"><span style="color:var(--muted);font-size:11px;">Phone</span> <a href="#" onclick="SLFBoard.logCall();return false;" style="color:var(--gold);">' + esc(c.phone || '—') + '</a></div>' +
       customRows +
       (cases.length ? '<div style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px;"><strong style="font-size:11px;color:var(--gold);letter-spacing:1px;">CASES</strong>' + caseRows + '</div>' : '') +
       '<p class="notice">' + esc(c.notes || '') + '</p>' +
@@ -188,38 +188,53 @@ var SLFBoard = (function () {
     type = type || 'text';
     return '<div class="full"><label class="fl">' + label + '</label><input id="' + id + '" type="' + type + '" placeholder="' + esc(ph) + '" /></div>';
   }
-  function quickForm(tab) {
-    var f = '';
-    if (tab === 'calls') {
-      f = fld('Direction', 'q-direction', 'outbound') + fld('Phone', 'q-phone', '+1 555 000 1234') +
+
+  var FORMS = {
+    calls: function () {
+      return fld('Direction', 'q-direction', 'outbound') + fld('Phone', 'q-phone', '+1 555 000 1234') +
         fld('Outcome', 'q-outcome', 'spoke / left voicemail / no answer') + fld('Notes', 'q-notes', 'What was discussed');
-    } else if (tab === 'emails') {
-      f = fld('Subject', 'q-subject', 'Document request') + fld('Address', 'q-address', 'jane@email.com') + fld('Notes', 'q-notes', 'Body summary');
-    } else if (tab === 'notes') {
-      f = fld('Note', 'q-text', 'Anything worth remembering');
-    } else if (tab === 'docs') {
-      f = fld('Document name', 'q-docName', 'Employment Certification Form') +
+    },
+    emails: function () {
+      return fld('Subject', 'q-subject', 'Document request') + fld('Address', 'q-address', 'jane@email.com') + fld('Notes', 'q-notes', 'Body summary');
+    },
+    notes: function () {
+      return fld('Note', 'q-text', 'Anything worth remembering');
+    },
+    docs: function () {
+      return fld('Document name', 'q-docName', 'Employment Certification Form') +
         '<div class="full"><label class="fl" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="q-received" style="width:16px;height:16px;accent-color:var(--gold);" /> Received</label></div>';
-    } else if (tab === 'tasks') {
-      f = fld('Task', 'q-taskText', 'Follow up on docs') + fld('Due date', 'q-due', '', 'date');
-    } else if (tab === 'loans') {
-      f = fld('Servicer', 'q-servicer', 'MOHELA') + fld('Balance (USD)', 'q-balance', '0.00', 'number') +
+    },
+    tasks: function () {
+      return fld('Task', 'q-taskText', 'Follow up on docs') + fld('Due date', 'q-due', '', 'date');
+    },
+    loans: function () {
+      return fld('Servicer', 'q-servicer', 'MOHELA') + fld('Balance (USD)', 'q-balance', '0.00', 'number') +
         fld('Status', 'q-status', 'in repayment / deferment / default') + fld('Program', 'q-program', 'PSLF');
-    } tab-form-break: else if (tab === 'bank') {
-      f = fld('Bank / name on account', 'q-bankName', 'Jane Doe') + fld('Type', 'q-type', 'checking / savings') + fld('Last 4 digits', 'q-last4', '1234');
-    } else if (tab === 'cards') {
-      f = fld('Card type', 'q-cardType', 'Visa / Mastercard') + fld('Last 4 digits', 'q-last4', '1234') + fld('Expiry', 'q-expiry', 'MM/YY');
-    } else if (tab === 'debts') {
-      f = fld('Creditor', 'q-creditor', 'Creditor name') + fld('Amount (USD)', 'q-amount', '0.00', 'number');
-    } else if (tab === 'events') {
-      f = fld('Event', 'q-eventTitle', 'Consultation call') + fld('Date', 'q-eventDate', '', 'date');
-    } else if (tab === 'sms') {
-      f = fld('Phone', 'q-phone', '+1 555 000 1234') + fld('Message', 'q-message', 'Sent text');
-    } else if (tab === 'emarketing') {
-      f = fld('Campaign', 'q-campaign', 'Spring forgiveness campaign') + fld('Channel', 'q-channel', 'email / SMS / mail');
+    },
+    bank: function () {
+      return fld('Bank / name on account', 'q-bankName', 'Jane Doe') + fld('Type', 'q-type', 'checking / savings') + fld('Last 4 digits', 'q-last4', '1234');
+    },
+    cards: function () {
+      return fld('Card type', 'q-cardType', 'Visa / Mastercard') + fld('Last 4 digits', 'q-last4', '1234') + fld('Expiry', 'q-expiry', 'MM/YY');
+    },
+    debts: function () {
+      return fld('Creditor', 'q-creditor', 'Creditor name') + fld('Amount (USD)', 'q-amount', '0.00', 'number');
+    },
+    events: function () {
+      return fld('Event', 'q-eventTitle', 'Consultation call') + fld('Date', 'q-eventDate', '', 'date');
+    },
+    sms: function () {
+      return fld('Phone', 'q-phone', '+1 555 000 1234') + fld('Message', 'q-message', 'Sent text');
+    },
+    emarketing: function () {
+      return fld('Campaign', 'q-campaign', 'Spring forgiveness campaign') + fld('Channel', 'q-channel', 'email / SMS / mail');
     }
-    if (!f) return '';
-    return '<div class="fgrid" style="margin-top:8px;">' + f +
+  };
+
+  function quickForm(tab) {
+    var build = FORMS[tab];
+    if (!build) return '';
+    return '<div class="fgrid" style="margin-top:8px;">' + build() +
       '</div><div class="modal-actions" style="justify-content:flex-start;"><button class="btn small" onclick="SLFBoard.addFromForm()">Add</button></div>';
   }
 
@@ -231,41 +246,53 @@ var SLFBoard = (function () {
     if (tab === 'calls') {
       rec = { direction: val('q-direction'), phone: val('q-phone'), outcome: val('q-outcome'), notes: val('q-notes') };
       if (!rec.phone) { alert('Phone is required to log a call.'); return; }
-    } else if (tab === 'emails') {
+    }
+    if (tab === 'emails') {
       rec = { subject: val('q-subject'), address: val('q-address'), notes: val('q-notes') };
       if (!rec.subject && !rec.address) { alert('Subject or address is required.'); return; }
-    } else if (tab === 'notes') {
+    }
+    if (tab === 'notes') {
       rec = { text: val('q-text') };
       if (!rec.text) { alert('Note text is required.'); return; }
-    } else if (tab === 'docs') {
+    }
+    if (tab === 'docs') {
       var recv = !!(document.getElementById('q-received') && document.getElementById('q-received').checked);
       rec = { docName: val('q-docName'), received: recv, date: recv ? new Date().toISOString().slice(0, 10) : '' };
       if (!rec.docName) { alert('Document name is required.'); return; }
-    } records-check: else if (tab === 'tasks') {
+    }
+    if (tab === 'tasks') {
       rec = { taskText: val('q-taskText'), due: val('q-due'), done: false };
       if (!rec.taskText) { alert('Task text is required.'); return; }
-    } else if (tab === 'loans') {
+    }
+    if (tab === 'loans') {
       rec = { servicer: val('q-servicer'), balance: val('q-balance'), status: val('q-status'), program: val('q-program') };
       if (!rec.servicer) { alert('Servicer is required.'); return; }
-    } else if (tab === 'bank') {
+    }
+    if (tab === 'bank') {
       rec = { bankName: val('q-bankName'), type: val('q-type'), last4: val('q-last4') };
       if (!rec.bankName) { alert('Bank / account name is required.'); return; }
-    } else if (tab === 'cards') {
+    }
+    if (tab === 'cards') {
       rec = { cardType: val('q-cardType'), last4: val('q-last4'), expiry: val('q-expiry') };
       if (!rec.cardType) { alert('Card type is required.'); return; }
-    } else if (tab === 'debts') {
+    }
+    if (tab === 'debts') {
       rec = { creditor: val('q-creditor'), amount: val('q-amount') };
       if (!rec.creditor) { alert('Creditor is required.'); return; }
-    } else if (tab === 'events') {
+    }
+    if (tab === 'events') {
       rec = { eventTitle: val('q-eventTitle'), eventDate: val('q-eventDate') };
       if (!rec.eventTitle) { alert('Event title is required.'); return; }
-    } else if (tab === 'sms') {
+    }
+    if (tab === 'sms') {
       rec = { phone: val('q-phone'), message: val('q-message') };
       if (!rec.phone) { alert('Phone is required.'); return; }
-    } else if (tab === 'emarketing') {
+    }
+    if (tab === 'emarketing') {
       rec = { campaign: val('q-campaign'), channel: val('q-channel') };
       if (!rec.campaign) { alert('Campaign is required.'); return; }
-    } else { return; }
+    }
+    if (!rec || !rec.id && Object.keys(rec).length === 0) return;
     addItem(c.id, tab, rec);
   }
 
@@ -276,12 +303,7 @@ var SLFBoard = (function () {
     var body = 'Hi ' + c.name + ',\n\n';
     var href = 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
     window.location.href = href;
-    var now = new Date().toISOString();
-    addItemLog(now, 'quickmail-opened ' + c.email);
-  }
-  function addItemLog(ts, label) {
-    if (!window.SLF) return;
-    SLF.log('board', 'emails (client ' + _clientId + ')', label);
+    if (window.SLF) SLF.log('board', 'emails (client ' + _clientId + ')', 'quickmail opened to ' + c.email);
   }
 
   function logCall() {
