@@ -1,48 +1,99 @@
 // ============================================================
-// SLF Custom Fields — Zoho-style field designer for the SLF CRM
-// Self-contained (mirrors the slf-sync.js injection pattern):
-//  - Adds a "Custom Fields" nav view with its own click binding
-//    (SLF.bindNav only binds buttons that exist at init time).
-//  - Injects custom inputs into the existing client/case modals
-//    by wrapping SLF methods at runtime — slf-app.js is untouched.
-//  - Custom values live INSIDE each record (record.custom), so
-//    existing sync carries them automatically. Field definitions
-//    and e-sign data ride in backups via a superset bundle
-//    (format stays 'slf-backup'; old files still import fine).
-// Definitions key: slf_crm.fielddefs.v1
+// SLF Custom Fields — core engine (part 1 of 2)
+// Zoho-style customization: storage, sections, 9 field types,
+// form injection, validation, backups, migration from v1.
+// The visual designer lives in slf-fields-designer.js (part 2).
+// slf-app.js is never modified — this module wraps at runtime.
+// Keys: slf_crm.fielddefs.v1 (fields), slf_crm.sections.v1
 // ============================================================
 'use strict';
 var SLFFields = (function () {
   var KEY = 'slf_crm.fielddefs.v1';
-  var TYPES = ['text', 'textarea', 'number', 'date', 'select', 'checkbox'];
+  var SEC_KEY = 'slf_crm.sections.v1';
+  var TYPES = ['text', 'textarea', 'number', 'date', 'select', 'multiselect', 'checkbox', 'email', 'phone'];
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
-  function defs() {
+  function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+
+  function rawDefs() {
     try { var v = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(v) ? v : []; }
     catch (e) { return []; }
   }
-  function saveDefs(list) {
+  function rawSecs() {
+    try { var v = JSON.parse(localStorage.getItem(SEC_KEY) || '[]'); return Array.isArray(v) ? v : []; }
+    catch (e) { return []; }
+  }
+  function writeDefs(list) {
     try { localStorage.setItem(KEY, JSON.stringify(list)); return true; }
     catch (e) { alert('SLF: could not save field definitions — storage full or blocked.'); return false; }
   }
-  function list(entity) { return defs().filter(function (f) { return f.entity === entity; }); }
+  function writeSecs(list) {
+    try { localStorage.setItem(SEC_KEY, JSON.stringify(list)); return true; }
+    catch (e) { alert('SLF: could not save sections — storage full or blocked.'); return false; }
+  }
+
+  // Migration: v1 fields (no sectionId) get a default section.
+  function ensureMigrated() {
+    var fs = rawDefs();
+    var ss = rawSecs();
+    var changed = false;
+    ['client', 'case'].forEach(function (ent) {
+      var orphan = fs.filter(function (f) { return f.entity === ent && !f.sectionId; });
+      if (!orphan.length) return;
+      var sec = ss.filter(function (s) { return s.entity === ent && s._default; })[0];
+      if (!sec) {
+        sec = { id: 'sec_' + ent + '_default', entity: ent, name: 'Additional Info', columns: 1, _default: true };
+        ss.push(sec);
+      }
+      fs.forEach(function (f) {
+        if (f.entity === ent && !f.sectionId) { f.sectionId = sec.id; changed = true; }
+      });
+    });
+    if (changed) { writeDefs(fs); writeSecs(ss); }
+  }
+
+  function defs() { ensureMigrated(); return rawDefs(); }
+  function secs() { ensureMigrated(); return rawSecs(); }
+  function sectionsOf(entity) { return secs().filter(function (s) { return s.entity === entity; }); }
+  function fieldsOf(entity) { return defs().filter(function (f) { return f.entity === entity; }); }
+  function fieldsInSections(entity) {
+    var out = [];
+    sectionsOf(entity).forEach(function (s) {
+      out.push({ section: s, fields: defs().filter(function (f) { return f.sectionId === s.id; }) });
+    });
+    return out;
+  }
 
   // ---------- form inputs ----------
-  function inputHtml(f, value, prefix) {
+  function inputHtml(f, value, prefix, halfWidth) {
     var id = prefix + f.id;
     var v = (value === undefined || value === null) ? '' : value;
     var req = f.required ? ' <span style="color:#FF8A5C">*</span>' : '';
+    var cls = halfWidth ? '' : ' full';
+    var ph = f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '';
+
     if (f.type === 'checkbox') {
-      return '<div class="full"><label class="fl" style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
+      return '<div class="' + cls.trim() + '"><label class="fl" style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
         '<input type="checkbox" id="' + id + '" style="width:16px;height:16px;accent-color:var(--gold);"' + (v ? ' checked' : '') + ' /> ' +
         esc(f.label) + req + '</label></div>';
     }
+    if (f.type === 'multiselect') {
+      var boxes = String(f.options || '').split('|').map(function (o, ix) {
+        o = o.trim();
+        if (!o) return '';
+        var checked = (Array.isArray(v) && v.indexOf(o) !== -1) ? ' checked' : '';
+        return '<label class="fl" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;margin:0 0 4px 0;">' +
+          '<input type="checkbox" id="' + id + '_opt_' + ix + '" data-opt="' + esc(o) + '" style="width:14px;height:14px;accent-color:var(--gold);"' + checked + ' /> ' +
+          esc(o) + '</label>';
+      }).join('');
+      return '<div class="' + cls.trim() + '"><label class="fl">' + esc(f.label) + req + '</label>' + boxes + '</div>';
+    }
     var label = '<label class="fl">' + esc(f.label) + req + '</label>';
     if (f.type === 'textarea') {
-      return '<div class="full">' + label + '<textarea id="' + id + '" rows="2">' + esc(v) + '</textarea></div>';
+      return '<div class="' + cls.trim() + '">' + label + '<textarea id="' + id + '" rows="2"' + ph + '>' + esc(v) + '</textarea></div>';
     }
     if (f.type === 'select') {
       var opts = String(f.options || '').split('|').map(function (o) {
@@ -50,23 +101,39 @@ var SLFFields = (function () {
         if (!o) return '';
         return '<option value="' + esc(o) + '"' + (String(v) === o ? ' selected' : '') + '>' + esc(o) + '</option>';
       }).join('');
-      return '<div class="full">' + label + '<select id="' + id + '"><option value="">— none —</option>' + opts + '</select></div>';
+      return '<div class="' + cls.trim() + '">' + label + '<select id="' + id + '"><option value="">— none —</option>' + opts + '</select></div>';
     }
-    var t = f.type === 'number' ? ' type="number" step="any"' : (f.type === 'date' ? ' type="date"' : ' type="text"');
-    return '<div class="full">' + label + '<input id="' + id + '"' + t + ' value="' + esc(v) + '" /></div>';
+    var t = f.type === 'number' ? ' type="number" step="any"'
+      : (f.type === 'date' ? ' type="date"'
+      : (f.type === 'email' ? ' type="email"'
+      : (f.type === 'phone' ? ' type="tel"' : ' type="text"')));
+    return '<div class="' + cls.trim() + '">' + label + '<input id="' + id + '"' + t + ph + ' value="' + esc(v) + '" /></div>';
   }
 
   function modalHtml(entity, values, prefix) {
     values = values || {};
-    var fs = list(entity);
-    if (!fs.length) return '';
-    return fs.map(function (f) { return inputHtml(f, values[f.id], prefix); }).join('');
+    var html = '';
+    fieldsInSections(entity).forEach(function (g) {
+      if (!g.fields.length) return;
+      html += '<div class="full" style="margin-top:6px;padding-bottom:2px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;">' + esc(g.section.name) + '</div>';
+      var half = g.section.columns === 2;
+      html += g.fields.map(function (f) { return inputHtml(f, values[f.id], prefix, half); }).join('');
+    });
+    return html;
   }
 
   function readInputs(entity, prefix) {
     var out = { values: {}, errors: [] };
-    list(entity).forEach(function (f) {
+    fieldsOf(entity).forEach(function (f) {
       var el = document.getElementById(prefix + f.id);
+      if (f.type === 'multiselect') {
+        var picked = [];
+        var boxes = document.querySelectorAll('[id^="' + prefix + f.id + '_opt_"]');
+        Array.prototype.forEach.call(boxes, function (b) { if (b.checked) picked.push(b.getAttribute('data-opt')); });
+        if (f.required && !picked.length) out.errors.push('"' + f.label + '" requires at least one choice.');
+        out.values[f.id] = picked;
+        return;
+      }
       if (!el) return;
       var v;
       if (f.type === 'checkbox') { v = !!el.checked; }
@@ -74,70 +141,12 @@ var SLFFields = (function () {
         v = el.value.trim();
         if (v !== '' && isNaN(Number(v))) out.errors.push('"' + f.label + '" must be a number.');
       } else { v = el.value.trim(); }
+      if (f.type === 'email' && v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) out.errors.push('"' + f.label + '" must be a valid email address.');
+      if (f.type === 'phone' && v && v.replace(/[^0-9]/g, '').length < 7) out.errors.push('"' + f.label + '" looks too short for a phone number.');
       if (f.required && (v === '' || v === false)) out.errors.push('"' + f.label + '" is required.');
       out.values[f.id] = v;
     });
     return out;
-  }
-
-  // ---------- designer view ----------
-  function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
-
-  function renderDesigner() {
-    var v = document.getElementById('view');
-    if (!v) return;
-    var fs = defs();
-    var rows = fs.map(function (f) {
-      return '<tr><td>' + esc(f.entity === 'client' ? 'Client' : 'Case') + '</td><td>' + esc(f.label) +
-        '</td><td>' + esc(f.type) + '</td><td>' + esc(f.type === 'select' ? (f.options || '') : '—') +
-        '</td><td>' + (f.required ? 'Yes' : 'No') + '</td>' +
-        '<td><button class="btn small danger" onclick="SLFFields.removeField(\'' + esc(f.id) + '\')">Delete</button></td></tr>';
-    }).join('');
-    var typeOpts = TYPES.map(function (t) { return '<option>' + t + '</option>'; }).join('');
-    v.innerHTML =
-      '<div class="card"><h3>Add Field</h3><div class="fgrid">' +
-      '<div><label class="fl">Applies to *</label><select id="fd-entity"><option value="client">Clients</option><option value="case">Cases</option></select></div>' +
-      '<div><label class="fl">Field type *</label><select id="fd-type">' + typeOpts + '</select></div>' +
-      '<div class="full"><label class="fl">Field label *</label><input id="fd-label" placeholder="e.g. Date of Birth" /></div>' +
-      '<div class="full"><label class="fl">Dropdown options (dropdown only — separate with |)</label><input id="fd-options" placeholder="Yes|No|Under Review" /></div>' +
-      '<div class="full"><label class="fl" style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="fd-required" style="width:16px;height:16px;accent-color:var(--gold);" /> Required field</label></div>' +
-      '</div><div class="modal-actions" style="justify-content:flex-start;"><button class="btn" onclick="SLFFields.addField()">Add Field</button></div></div>' +
-      '<div class="card"><h3>Your Custom Fields</h3>' +
-      (fs.length
-        ? '<table><thead><tr><th>On</th><th>Label</th><th>Type</th><th>Options</th><th>Required</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' +
-          '<p class="notice">Custom fields appear automatically in the add/edit forms and tables for Clients and Cases, are validated when required, and travel inside every backup.</p>'
-        : '<div class="empty">No custom fields yet. Add your first above — e.g. "Date of Birth" on Clients, or "Forgiveness Eligibility Date" on Cases.</div>') +
-      '</div>';
-  }
-
-  function addField() {
-    var entity = val('fd-entity');
-    var label = val('fd-label').trim();
-    var type = val('fd-type');
-    var options = val('fd-options').trim();
-    var required = !!(document.getElementById('fd-required') && document.getElementById('fd-required').checked);
-    var errs = [];
-    if (!label) errs.push('Field label is required.');
-    if (type === 'select' && !options) errs.push('Dropdown fields need at least one option.');
-    if (errs.length) { alert('Please fix:\n- ' + errs.join('\n- ')); return; }
-    var f = {
-      id: 'cf_' + Date.now().toString(36) + Math.floor(Math.random() * 10000).toString(36),
-      entity: entity, label: label, type: type, required: required
-    };
-    if (type === 'select') f.options = options;
-    var all = defs();
-    all.push(f);
-    if (!saveDefs(all)) return;
-    if (window.SLF) SLF.log('fields', 'custom field', '"' + label + '" (' + type + ') added to ' + entity + 's');
-    renderDesigner();
-  }
-
-  function removeField(id) {
-    if (!confirm('Remove this custom field? Existing values already saved on records are kept (they simply stop being displayed).')) return;
-    var all = defs().filter(function (f) { return f.id !== id; });
-    if (!saveDefs(all)) return;
-    if (window.SLF) SLF.log('fields', 'custom field', 'field removed');
-    renderDesigner();
   }
 
   // ---------- modal injection ----------
@@ -171,7 +180,7 @@ var SLFFields = (function () {
     if (!window.SLF) return;
     if (SLF.view !== 'clients' && SLF.view !== 'cases') return;
     var entity = SLF.view === 'clients' ? 'client' : 'case';
-    var fs = list(entity);
+    var fs = fieldsOf(entity);
     if (!fs.length) return;
     var t = document.querySelector('#view table');
     if (!t) return;
@@ -205,15 +214,17 @@ var SLFFields = (function () {
       fs.forEach(function (f) {
         var td = document.createElement('td');
         var raw = rec && rec.custom ? rec.custom[f.id] : '';
-        if (f.type === 'checkbox') td.textContent = rec ? (raw ? 'Yes' : 'No') : '';
-        else td.textContent = (raw === undefined || raw === null || raw === '') ? (rec ? '—' : '') : String(raw);
+        if (!rec) { td.textContent = ''; }
+        else if (f.type === 'checkbox') { td.textContent = raw ? 'Yes' : 'No'; }
+        else if (Array.isArray(raw)) { td.textContent = raw.join(', ') || '—'; }
+        else { td.textContent = (raw === undefined || raw === null || raw === '') ? '—' : String(raw); }
         if (tr.lastElementChild) tr.insertBefore(td, tr.lastElementChild);
         else tr.appendChild(td);
       });
     });
   }
 
-  // ---------- hook SLF (runtime wrapping — slf-app.js is never modified) ----------
+  // ---------- hook SLF ----------
   function hook() {
     var nav = document.getElementById('nav');
     if (nav) {
@@ -231,56 +242,60 @@ var SLFFields = (function () {
     }
     ensureContainers();
 
-    var origOpenClient = SLF.openClientModal;
-    SLF.openClientModal = function (existing) {
-      origOpenClient.apply(SLF, arguments);
-      fillClient(existing);
-    };
-    var origOpenCase = SLF.openCaseModal;
-    SLF.openCaseModal = function (existing) {
-      origOpenCase.apply(SLF, arguments);
-      fillCase(existing);
-    };
+    SLF.openClientModal = (function (orig) {
+      return function (existing) {
+        orig.apply(SLF, arguments);
+        fillClient(existing);
+      };
+    })(SLF.openClientModal);
 
-    var origSaveClient = SLF.saveClient;
-    SLF.saveClient = function () {
-      var res = readInputs('client', 'c-');
-      if (res.errors.length) { alert('Please fix:\n- ' + res.errors.join('\n- ')); return; }
-      var before = SLF.clients.length;
-      origSaveClient.apply(SLF, arguments);
-      if (document.getElementById('client-modal').classList.contains('open')) return; // original validation failed
-      var rec = SLF.editingClientId ? SLF.clientById(SLF.editingClientId)
-        : (SLF.clients.length > before ? SLF.clients[SLF.clients.length - 1] : null);
-      if (rec) {
-        rec.custom = res.values;
-        rec.updatedAt = Date.now();
-        SLF_STORE.write(SLF_CLIENTS_KEY, SLF.clients);
-      }
-    };
+    SLF.openCaseModal = (function (orig) {
+      return function (existing) {
+        orig.apply(SLF, arguments);
+        fillCase(existing);
+      };
+    })(SLF.openCaseModal);
 
-    var origSaveCase = SLF.saveCase;
-    SLF.saveCase = function () {
-      var res = readInputs('case', 'k-');
-      if (res.errors.length) { alert('Please fix:\n- ' + res.errors.join('\n- ')); return; }
-      var before = SLF.cases.length;
-      origSaveCase.apply(SLF, arguments);
-      if (document.getElementById('case-modal').classList.contains('open')) return;
-      var rec = SLF.editingCaseId ? SLF.cases.filter(function (x) { return x.id === SLF.editingCaseId; })[0]
-        : (SLF.cases.length > before ? SLF.cases[SLF.cases.length - 1] : null);
-      if (rec) {
-        rec.custom = res.values;
-        rec.updatedAt = Date.now();
-        SLF_STORE.write(SLF_CASES_KEY, SLF.cases);
-      }
-    };
+    SLF.saveClient = (function (orig) {
+      return function () {
+        var res = readInputs('client', 'c-');
+        if (res.errors.length) { alert('Please fix:\n- ' + res.errors.join('\n- ')); return; }
+        var before = SLF.clients.length;
+        orig.apply(SLF, arguments);
+        if (document.getElementById('client-modal').classList.contains('open')) return;
+        var rec = SLF.editingClientId ? SLF.clientById(SLF.editingClientId)
+          : (SLF.clients.length > before ? SLF.clients[SLF.clients.length - 1] : null);
+        if (rec) {
+          rec.custom = res.values;
+          rec.updatedAt = Date.now();
+          SLF_STORE.write(SLF_CLIENTS_KEY, SLF.clients);
+        }
+      };
+    })(SLF.saveClient);
 
-    // Superset backup: original format + field definitions + e-sign requests.
+    SLF.saveCase = (function (orig) {
+      return function () {
+        var res = readInputs('case', 'k-');
+        if (res.errors.length) { alert('Please fix:\n- ' + res.errors.join('\n- ')); return; }
+        var before = SLF.cases.length;
+        orig.apply(SLF, arguments);
+        if (document.getElementById('case-modal').classList.contains('open')) return;
+        var rec = SLF.editingCaseId ? SLF.cases.filter(function (x) { return x.id === SLF.editingCaseId; })[0]
+          : (SLF.cases.length > before ? SLF.cases[SLF.cases.length - 1] : null);
+        if (rec) {
+          rec.custom = res.values;
+          rec.updatedAt = Date.now();
+          SLF_STORE.write(SLF_CASES_KEY, SLF.cases);
+        }
+      };
+    })(SLF.saveCase);
+
     SLF.downloadBackup = function () {
       var bundle = {
         format: 'slf-backup', version: 1, exportedAt: new Date().toISOString(),
         data: {
           clients: SLF.clients, cases: SLF.cases, history: SLF.history, counter: SLF.counter,
-          fielddefs: defs(),
+          fielddefs: defs(), sections: secs(),
           esign: (window.SLFEsign ? SLFEsign.requests() : [])
         }
       };
@@ -316,6 +331,9 @@ var SLFFields = (function () {
         if (Array.isArray(parsed.data.fielddefs)) {
           try { localStorage.setItem(KEY, JSON.stringify(parsed.data.fielddefs)); } catch (e) {}
         }
+        if (Array.isArray(parsed.data.sections)) {
+          try { localStorage.setItem(SEC_KEY, JSON.stringify(parsed.data.sections)); } catch (e) {}
+        }
         if (Array.isArray(parsed.data.esign) && window.SLFEsign) SLFEsign.saveRequests(parsed.data.esign);
         SLF.log('restore', 'system', 'backup imported (' + parsed.data.cases.length + ' cases)');
         SLF.render();
@@ -326,24 +344,28 @@ var SLFFields = (function () {
       reader.readAsText(file);
     };
 
-    var origRender = SLF.render;
-    SLF.render = function () {
-      origRender.apply(SLF, arguments);
-      try {
-        if (SLF.view === 'fields') {
-          document.getElementById('view-title').textContent = 'Custom Fields';
-          renderDesigner();
-        } else {
-          augment();
-        }
-      } catch (e) { /* module views must never break the main app */ }
-    };
+    SLF.render = (function (orig) {
+      return function () {
+        orig.apply(SLF, arguments);
+        try {
+          if (SLF.view === 'fields') {
+            document.getElementById('view-title').textContent = 'Custom Fields';
+            if (window.SLFFieldsDesigner) SLFFieldsDesigner.render();
+            else document.getElementById('view').innerHTML = '<div class="empty">Designer module not loaded.</div>';
+          } else {
+            augment();
+          }
+        } catch (e) { /* module views must never break the main app */ }
+      };
+    })(SLF.render);
   }
 
   document.addEventListener('DOMContentLoaded', function () { if (window.SLF) hook(); });
 
   return {
-    list: list, modalHtml: modalHtml, readInputs: readInputs,
-    renderDesigner: renderDesigner, addField: addField, removeField: removeField
+    TYPES: TYPES, esc: esc, val: val,
+    defs: defs, secs: secs, writeDefs: writeDefs, writeSecs: writeSecs,
+    sectionsOf: sectionsOf, fieldsOf: fieldsOf, fieldsInSections: fieldsInSections,
+    modalHtml: modalHtml, readInputs: readInputs
   };
 })();
