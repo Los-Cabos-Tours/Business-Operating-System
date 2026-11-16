@@ -10,22 +10,21 @@
 </head>
 <body>
   <!-- SECURITY GUARD — runs FIRST. Demo accounts that still carry their
-       shipped default passwords (printed in the public repo) are disabled
-       and any session using them is killed. Only real accounts with
-       CHANGED passwords keep working. Must load before cross-device-login
-       and boot-sync so disabled accounts can never be revived. -->
+       shipped default passwords are disabled; superadmin is NEVER
+       disabled and is auto-repaired if an old guard version disabled it. -->
   <script src="js/security-guard.js"></script>
   <!-- Cross-device login: pulls the shared user-account list from the
-       configured sync backend into this browser's storage before login
-       is attempted, so any account works on any computer or device.
-       Same-origin with crm.html: both share the same localStorage. -->
+       configured sync backend so any account works on any device. -->
   <script src="js/cross-device-login.js"></script>
   <!-- Boot sync: pulls ALL shared data (main BOS + Student Loans) from
-       the configured sync backend before the app opens, so every
-       device shows the same information. Also auto-enables SLF sync
-       on every device (owner order: one shared backend, all data
-       shared with all users). -->
+       the configured sync backend so every device shows the same data. -->
   <script src="js/boot-sync.js"></script>
+  <!-- TWO-FACTOR AUTH (owner order 2026-11-16): after username/password,
+       every non-superadmin account must enter a fresh 6-digit PIN emailed
+       to their address on file. PIN expires after 2 minutes. Three wrong
+       attempts block the login. Superadmin signs in at any time, no PIN.
+       ?v=1.2 cache-busts so browsers always fetch the current rules. -->
+  <script src="js/two-factor.js?v=1.2"></script>
   <iframe id="bos-frame" src="crm.html" title="Aetherion"></iframe>
   <script>
     (function () {
@@ -50,11 +49,6 @@
           if (doc.getElementById('nav-slf')) return;
           var menu = doc.querySelector('.sidebar-menu');
           if (!menu) return;
-          // Access is controlled by WHO HAS AN ACCOUNT, not by role
-          // name: any logged-in user sees the tab. The user (owner)
-          // decides per person whether they get a login and what they
-          // can do inside. Login state is detected by the user chip
-          // shown in the sidebar; the login overlay hides it.
           var overlay = doc.getElementById('login-overlay');
           var overlayVisible = !!(overlay && overlay.offsetParent !== null);
           if (overlayVisible) return; // not logged in yet
