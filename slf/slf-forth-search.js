@@ -1,15 +1,11 @@
 // Forth clone — in-bar contact record search.
-// Owner correction (this session): the magnifying glass lives in
-// the ACTION BAR (first item, where Contact Search originally
-// sat) — NOT in the nested tab strip, NOT at the bottom. Clicking
-// it changes NOTHING on screen except revealing the inline
-// search field inside the action bar itself. The current tab,
-// its records, and the whole workspace are never touched — no
-// tab switch, no workspace replacement, no data taken away.
-// Results render in a small panel that appears under the action
-// bar, above the current tab content.
-// The Budget strip button stays removed (per earlier owner
-// order — Budget Analysis in the action bar is the one entry).
+// Owner correction (this session): clicking the magnifying glass
+// produces ZERO screen change. The search input is ALWAYS in the
+// action bar (same pixels before and after clicking); the glass
+// only focuses it. The results panel appears ONLY after the user
+// actually types — and even then, the current tab and its
+// records below are never modified.
+// The Budget strip button stays removed (#43 order).
 'use strict';
 (function () {
   if (!window.SLFBoard || !SLFBoard.TABS) return;
@@ -19,26 +15,13 @@
     if (SLFBoard.TABS[i].id === 'budget') SLFBoard.TABS.splice(i, 1);
   }
 
-  // ---- Strip stays clean: no search tab, no icon in the strip ----
-  // (Earlier attempts wrongly appended the search as a strip tab.
-  // It has been removed; the strip is exactly the plain tabs.)
-
   var SEARCHABLE = ['history', 'calls', 'emails', 'notes', 'emarketing', 'sms', 'docs', 'events', 'tasks', 'alerts', 'cards', 'bank', 'debts', 'loans', 'lenders', 'servicing', 'budget'];
 
-  // Toggle the inline search field in the action bar. Nothing
-  // else on screen changes; the current tab is untouched.
-  SLFBoard.toggleSearch = function () {
+  // Clicking the glass does EXACTLY one thing: puts the cursor in
+  // the box that is already on screen. No display change, no toggle.
+  SLFBoard.focusSearch = function () {
     var box = document.getElementById('fnav-search-input');
-    var out = document.getElementById('fnav-search-results');
-    if (!box) return;
-    var showing = box.style.display !== 'none';
-    box.style.display = showing ? 'none' : 'inline-block';
-    if (out) {
-      out.style.display = 'none';
-      out.innerHTML = '';
-    }
-    if (!showing) box.focus();
-    else box.value = '';
+    if (box) box.focus();
   };
 
   SLFBoard.runContactSearch = function (q) {
@@ -46,11 +29,12 @@
     var out = document.getElementById('fnav-search-results');
     if (!c || !out) return;
     q = String(q || '').toLowerCase().trim();
-    out.style.display = 'block';
     if (!q) {
-      out.innerHTML = '<div style="color:var(--muted);font-size:12px;">Type to search this contact\'s records.</div>';
+      out.style.display = 'none';
+      out.innerHTML = '';
       return;
     }
+    out.style.display = 'block';
     var esc = SLFBoard.esc;
     var matches = [];
     var d = SLFBoard.all();
@@ -73,7 +57,7 @@
     out.innerHTML = matches.length
       ? matches.join('')
       : '<div style="color:var(--muted);font-size:12px;">No matches for "' + esc(q) + '".</div>';
-    // IMPORTANT: the current tab and its records are untouched.
-    // Search results live only in this panel under the bar.
+    // The current tab and its records are never touched — results
+    // live only in this panel under the bar.
   };
 })();
