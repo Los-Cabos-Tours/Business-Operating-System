@@ -9,36 +9,41 @@
 //
 // LOAD ORDER RULE (learned the hard way): modules that wrap or
 // decorate render/setTab/panel MUST load AFTER slf-board-main.js
-// (the controller). The two nav modules that loaded before it
-// broke every tab click — removed in this version.
+// (the controller).
 //
-// 3.16: slf-fielddefs-sync.js — custom field definitions and
-//       sections sync to every device.
-// 3.17: slf-board-sync.js — board record data (notes, calls,
-//       emails, all tabs) syncs to every device. Closes the
-//       class of bug where data lived only on the creator's
-//       browser.
+// 3.18: slf-fast-sync.js — ONE consolidated pull every 3 seconds
+//       (owner order 2026-11-17: everything syncs every 3s, no
+//       exceptions; hidden tabs poll every 30s to protect the
+//       backend quota) dispatched to all sync modules.
+//       slf-delete-guard.js — deletion is SUPERADMIN-ONLY
+//       (owner order: users cannot delete files/records; only
+//       the superadmin can).
+//       FIXES a 3.17 bug: the loop iterated backwards, loading
+//       modules in reverse order.
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.17';
+  var VERSION = '3.18';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',
     'slf-board-main.js',
     'slf-notes-patch.js', 'slf-history-live.js', 'slf-board-keepopen.js', 'slf-board-hook.js', 'slf-bos-nav-final.js', 'slf-forth-search.js',
-    'slf-fielddefs-sync.js', 'slf-board-sync.js'];
+    'slf-fielddefs-sync.js', 'slf-board-sync.js', 'slf-fast-sync.js', 'slf-delete-guard.js'];
   var failures = [];
-  var i, m, ok, sha;
-  var xhr = new XMLHttpRequest();
-  for (i = MODULES.length - 1; i >= 0; i--) {
+  var i, m, ok, xhr;
+
+  for (i = 0; i < MODULES.length; i++) {
     m = MODULES[i];
     ok = true;
     try {
+      xhr = new XMLHttpRequest();
       xhr.open('GET', m + '?v=' + VERSION, false);
       xhr.send(null);
       if (xhr.status === 200 || xhr.status === 0) {
-        try { new Function(xhr.responseText); } catch (parseErr) {
+        try {
+          new Function(xhr.responseText);
+        } catch (parseErr) {
           ok = false;
           failures.push(m + ' — syntax error blocked: ' + (parseErr && parseErr.message ? parseErr.message : 'parse failed'));
         }
