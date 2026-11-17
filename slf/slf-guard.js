@@ -7,14 +7,15 @@
 // reported visibly instead of a dead page.
 // When modules change, bump VERSION (cache-busting).
 //
-// 3.27: sidebar nav v3 — UNDOES the v2 17-module sidebar move
-//       (never requested). Restores the sidebar tabs v1 hid;
-//       hides only the two duplicated by the top bar. Nothing
-//       else changes.
+// 3.28: owner layout, literal from the report: the client panel
+//       lives in the sidebar space under "SLF CRM / Student Loan
+//       Forgiveness"; the Client Dashboard header sits at the
+//       very top of the main area; the nested tabs fill the rest.
+//       Nothing else changes.
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.27';
+  var VERSION = '3.28';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',
