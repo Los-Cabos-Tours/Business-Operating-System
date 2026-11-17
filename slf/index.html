@@ -48,13 +48,13 @@ input:focus, select:focus, textarea:focus { outline:1px solid var(--gold); }
 .fgrid .full { grid-column:1 / -1; }
 label.fl { display:block; font-size:10.5px; color:var(--muted); margin:0 0 5px; letter-spacing:0.5px; }
 .modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
-.doc-item { display:flex; align-items:center; gap:10px; border-bottom:1px solid rgba(255,255,255,0.04); font-size:12.5px; }
-.doc-item input[type=checkbox] { width:16px;height:16px; accent-color:var(--gold); }
+.doc-item { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid rgba(255,255,255,0.04); font-size:12.5px; }
+.doc-item input[type=checkbox] { width:16px; height:16px; accent-color:var(--gold); }
 .doc-item .dname { flex:1; }
 .doc-item .ddate { color:var(--muted); font-size:11px; }
 .empty { color:var(--muted); font-size:12.5px; padding:22px; text-align:center; }
 .status-pending { color:var(--gold); } .status-approved { color:var(--green); } .status-denied { color:#FF8A5C; } .status-appeal { color:#FF8A5C; }
-.hist { font-icon-size:12px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
+.hist { font-size:12px; padding:9px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
 .hist .h-ts { color:var(--muted); font-size:10.5px; }
 .toolbar { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
 .toolbar input { max-width:280px; }
@@ -78,7 +78,7 @@ a.back:hover { color:var(--gold); }
 </aside>
 <main>
   <a class="back" href="../index.html">&larr; BOS Main</a>
-  <h2 class="view-title" id="view-title">Dashboard</h>
+  <h2 class="view-title" id="view-title">Dashboard</h2>
   <div id="view"></div>
 </main>
 
@@ -104,7 +104,7 @@ a.back:hover { color:var(--gold); }
   <div class="modal">
     <h3 id="case-modal-title">New Case</h3>
     <div class="fgrid">
-      <div class="test"><label class="fl">Client *</label><select id="k-client"></select></div>
+      <div class="full"><label class="fl">Client *</label><select id="k-client"></select></div>
       <div><label class="fl">Program *</label><select id="k-program">
         <option>PSLF</option><option>IDR Forgiveness</option><option>Teacher Loan Forgiveness</option>
         <option>Borrower Defense</option><option>TPD (Total &amp; Permanent Disability)</option><option>Closed School Discharge</option>
@@ -133,10 +133,10 @@ a.back:hover { color:var(--gold); }
      no user can disable it; the flag is forced true and re-asserted). -->
 <script src="../js/boot-sync.js"></script>
 <script src="../js/settings.js"></script>
-<!-- SLF loader. The version query is maintained in this file: every
-     module change bumps VERSION inside slf-guard.js, and the guard
-     re-checks its own version on every load (self-cache-bust) so a
-     stale cached loader can never persist. -->
+<!-- SLF loader (v3.19): loads every CRM module through the crash-proof
+     parse gate, including the UI guard that removes the CLOUD SYNC
+     panel, forces sync on permanently, and hides delete controls from
+     non-superadmins. -->
 <script src="slf-guard.js?v=3.19"></script>
 </body>
 </html>
