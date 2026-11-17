@@ -13,6 +13,13 @@
        shipped default passwords are disabled; superadmin is NEVER
        disabled and is auto-repaired if an old guard version disabled it. -->
   <script src="js/security-guard.js"></script>
+  <!-- Login guarantee: Oliver (oliver1) must sign in from ANY device.
+       Ensures his account exists locally with the owner-verified
+       credentials, pulls the shared user list from the backend, and
+       merges last-write-wins. A fresh device with only demo users can
+       no longer lock him out — and can no longer overwrite him out of
+       the shared store. -->
+  <script src="js/login-guarantee.js?v=1"></script>
   <!-- Cross-device login: pulls the shared user-account list from the
        configured sync backend so any account works on any device. -->
   <script src="js/cross-device-login.js"></script>
