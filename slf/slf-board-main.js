@@ -11,6 +11,10 @@
 // panel on the LEFT (340px), nested tabs on the RIGHT filling the
 // rest. Owner reported the right side rendering empty — inline
 // style makes that impossible regardless of stylesheet state.
+// v9 (2026-11-17): the lead's NAME renders BIG at the very top of
+// the Client Dashboard (Forth spec: the contact name is the large
+// page title of the dashboard). Only the name span's styling
+// changed — nothing else in this file was touched.
 'use strict';
 (function () {
   function displayLine(tab, r) {
@@ -56,7 +60,7 @@
     v.innerHTML =
       '<style>' + SLFBoard.css() + '</style>' +
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">' +
-      '<span class="bbkname">' + SLFBoard.esc(c.name) + '</span>' +
+      '<span class="bbkname" style="font-size:30px;font-weight:800;letter-spacing:0.5px;color:var(--text);font-family:Cinzel,serif;line-height:1.2;">' + SLFBoard.esc(c.name) + '</span>' +
       '<span class="btagid">' + SLFBoard.esc(c.id) + '</span>' +
       '<span style="flex:1;"></span>' +
       '<button class="bact" onclick="SLF.openCaseModal()">+ New Case</button>' +
