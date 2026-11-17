@@ -15,20 +15,24 @@
 //       dispatched to all sync modules; slf-delete-guard.js —
 //       deletion is SUPERADMIN-ONLY; fixes the 3.17 reversed
 //       module load order.
-// 3.19: slf-ui-guard.js — owner order 2026-11-17: the CLOUD SYNC
-//       sidebar panel (status chip, Disable Sync button, namespace
-//       note) is removed from the UI; sync is forced on forever;
-//       every delete control is hidden from non-superadmin users.
+// 3.19: slf-ui-guard.js — CLOUD SYNC sidebar panel removed;
+//       sync forced on forever; delete controls hidden from
+//       non-superadmin users.
+// 3.20: slf-single-nav.js — ONE navigation: the Forth-style top
+//       module bar. The duplicate left sidebar tab list
+//       (Dashboard, Clients, Cases & Pipeline, Activity History,
+//       Backup & Restore, Custom Fields, Signatures) is hidden —
+//       no tab appears twice (owner order 2026-11-17).
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.19';
+  var VERSION = '3.20';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',
     'slf-board-main.js',
     'slf-notes-patch.js', 'slf-history-live.js', 'slf-board-keepopen.js', 'slf-board-hook.js', 'slf-bos-nav-final.js', 'slf-forth-search.js',
-    'slf-fielddefs-sync.js', 'slf-board-sync.js', 'slf-fast-sync.js', 'slf-delete-guard.js', 'slf-ui-guard.js'];
+    'slf-fielddefs-sync.js', 'slf-board-sync.js', 'slf-fast-sync.js', 'slf-delete-guard.js', 'slf-ui-guard.js', 'slf-single-nav.js'];
   var failures = [];
   var i, m, ok, xhr;
 
