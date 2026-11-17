@@ -1,26 +1,28 @@
 // ============================================================
-// SLF Client-Board Data Sync — v1
-// Owner order (2026-11-17): ALL info in the system must be
-// shared so every user on every device sees the same data.
+// SLF Client-Board Data Sync — v1.1
+// Owner order (2026-11-17): ALL info shared, synced every 3
+// seconds (driven by slf-fast-sync.js heartbeat).
 //
 // ROOT CAUSE (verified by audit): every client-board tab record
 // (History, Calls, Emails, Notes, Docs, Tasks, Loans, Bank
 // Accounts, Credit Cards, Debts, Events, SMS, E-Marketing,
 // Servicing, Lenders) is stored under ONE localStorage key:
 // slf_crm.clientboard.v1 — and the SLF CloudSync module does
-// NOT include that key. So board notes and records only ever
-// existed on the browser that typed them. Same class of bug as
-// the field definitions (fixed by slf-fielddefs-sync.js).
+// NOT include that key. So board records only ever existed on
+// the browser that typed them.
 //
 // STRUCTURE: { "<clientId>": { "<tab>": [ { id, ts, ... } ] } }
 // Board records carry id ("b_...") and ts (ISO string).
 //
 // MERGE RULE: per client, per tab — union by record id; when
-// the same id exists on both sides the NEWER ts wins. A record
-// missing locally is adopted. Local data is never dropped.
-// DELETIONS do not propagate in v1 (removeItem filters by id on
-// the local device only) — noted honestly; additions and edits
-// propagate everywhere.
+// the same id exists on both sides the NEWER ts wins. Local
+// data is never dropped. DELETIONS do not propagate (removeItem
+// is superadmin-only via slf-delete-guard.js; tombstones for
+// board records are a future item).
+//
+// v1.1: exposes applyRemotePayload(data) so the 3-second
+// heartbeat can feed this module from its consolidated pull,
+// and pushes within 800ms of a local change.
 // ============================================================
 (function () {
   'use strict';
@@ -30,7 +32,7 @@
   var BOOT_PUSH_AT_KEY = 'slf_crm.clientboard.boot_push_at';
   var BOOT_PUSH_THROTTLE_MS = 24 * 60 * 60 * 1000;
   var POLL_MS = 60000;
-  var DEBOUNCE_MS = 2000;
+  var DEBOUNCE_MS = 800;
   var PULL_TIMEOUT_MS = 8000;
 
   var _origSet = localStorage.setItem.bind(localStorage);
@@ -95,6 +97,16 @@
     }
   }
 
+  // Heartbeat entry point: apply a whole namespace payload.
+  function applyRemotePayload(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+    if (data[BOARD_KEY] === undefined) return;
+    var remote;
+    try { remote = (typeof data[BOARD_KEY] === 'string') ? JSON.parse(data[BOARD_KEY]) : data[BOARD_KEY]; }
+    catch (e) { return; }
+    if (applyRemote(remote)) reRender();
+  }
+
   // ---- push (single small payload; backend merges per-key) ----
   function pushNow() {
     if (!isEnabled()) return;
@@ -132,12 +144,7 @@
       if (script && script.parentNode) script.parentNode.removeChild(script);
     }
     window[cb] = function (data) {
-      try {
-        if (data && typeof data === 'object' && !Array.isArray(data) && data[BOARD_KEY] !== undefined) {
-          var remote = (typeof data[BOARD_KEY] === 'string') ? JSON.parse(data[BOARD_KEY]) : data[BOARD_KEY];
-          if (applyRemote(remote)) reRender();
-        }
-      } catch (e) { /* bad payload: ignore */ }
+      try { applyRemotePayload(data); } catch (e) { /* bad payload: ignore */ }
       finish();
     };
     script = document.createElement('script');
@@ -158,8 +165,6 @@
 
   // ---- lifecycle ----
   function start() {
-    // Boot push: the device holding board records must upload
-    // them (throttled once per day) so other devices receive them.
     var lastPush = Number(_origGet(BOOT_PUSH_AT_KEY)) || 0;
     var hasLocal = Object.keys(readBoard()).length > 0;
     if (hasLocal && Date.now() - lastPush > BOOT_PUSH_THROTTLE_MS) {
@@ -187,5 +192,5 @@
     boot();
   }
 
-  window.SLFBoardSync = { push: pushNow, pull: pullOnce };
+  window.SLFBoardSync = { push: pushNow, pull: pullOnce, applyRemotePayload: applyRemotePayload };
 })();
