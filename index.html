@@ -13,13 +13,18 @@
        shipped default passwords are disabled; superadmin is NEVER
        disabled and is auto-repaired if an old guard version disabled it. -->
   <script src="js/security-guard.js"></script>
-  <!-- Login guarantee: Oliver (oliver1) must sign in from ANY device.
-       Ensures his account exists locally with the owner-verified
-       credentials, pulls the shared user list from the backend, and
-       merges last-write-wins. A fresh device with only demo users can
-       no longer lock him out — and can no longer overwrite him out of
-       the shared store. -->
-  <script src="js/login-guarantee.js?v=1"></script>
+  <!-- LOGIN GUARANTEE v2 — universal: EVERY account (superadmin, oliver1,
+       and all future team accounts) can sign in from ANY device, anywhere.
+       1. Blocks demo-account seeding on every device (deleted accounts
+          never resurrect; printed demo passwords never log in).
+       2. Pulls the shared user list from the backend and merges
+          last-write-wins, so accounts and password changes propagate
+          to every device.
+       3. Removes stale deletion tombstones whose id now belongs to a
+          live account (the oliver1/U-002 collision) so sync merges stop
+          silently dropping real accounts.
+       4. Retries a failed sign-in once with the freshest shared list. -->
+  <script src="js/login-guarantee.js?v=2"></script>
   <!-- Cross-device login: pulls the shared user-account list from the
        configured sync backend so any account works on any device. -->
   <script src="js/cross-device-login.js"></script>
@@ -71,7 +76,7 @@
           var div = doc.createElement('div');
           var span = document.createElement('span');
           span.textContent = 'Student Loans';
-          var sub = doc.createElement('div');
+          var sub = document.createElement('div');
           sub.className = 'nav-sub';
           sub.textContent = 'Student loan CRM';
           div.appendChild(span);
