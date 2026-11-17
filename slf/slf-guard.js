@@ -7,15 +7,17 @@
 // reported visibly instead of a dead page.
 // When modules change, bump VERSION (cache-busting).
 //
-// 3.28: owner layout, literal from the report: the client panel
-//       lives in the sidebar space under "SLF CRM / Student Loan
-//       Forgiveness"; the Client Dashboard header sits at the
-//       very top of the main area; the nested tabs fill the rest.
-//       Nothing else changes.
+// 3.29: single-nav v5 — fixes the v4 bug that DELETED the client
+//       panel after moving it (cleanup loop treated "moved" as
+//       "closed"). Now: board open -> panel lives in the sidebar
+//       under the title (nav tabs hidden), Client Dashboard
+//       header at the very top, tabs full width. Board closed ->
+//       sidebar normal. Panel never removed while a client is
+//       open. Nothing else changes.
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.28';
+  var VERSION = '3.29';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',
