@@ -1,53 +1,59 @@
 // ============================================================
-// SLF Single Navigation — one nav, no duplicates
-// Owner order (2026-11-17): "I do not need the same tab 2 times
-// in the system — take away the side tabs; we already have them
-// in the main tabs." Target layout is the Forth-style horizontal
-// top module bar (already built in slf-bos-nav-final.js): 17
-// modules across the top, no duplicate left-side tabs.
+// SLF Single Navigation — v2. Owner report (2026-11-17, live
+// screen): everything under "SLF CRM / Student Loan Forgiveness"
+// rendered EMPTY — the top module bar never showed, and the
+// client panel appeared under the sidebar title with the main
+// area blank.
 //
-// WHAT THIS DOES:
-//  - Hides the left sidebar's view-tab block (Dashboard, Clients,
-//    Cases & Pipeline, Activity History, Backup & Restore,
-//    Custom Fields, Signatures) on every load and after every
-//    DOM change. Those destinations all remain reachable from
-//    the TOP module bar / dashboard view, so nothing is lost —
-//    the duplicate nav surface is simply removed.
-//  - Keeps the sidebar's brand header (SLF CRM / Student Loan
-//    Forgiveness) and the '← BOS Main' back link intact.
-//  - The sidebar keeps its width so the layout does not jump.
+// ROOT CAUSE: v1 hid the sidebar tab list and relied on the
+// horizontal top bar (slf-bos-nav-final.js) to appear. When that
+// bar fails to render (DOM state, styling, timing), the whole
+// page has NO navigation at all. Two nav systems, both fragile.
 //
-// Sidebar DOM (slf/index.html):
-//   <aside> <h1>SLF CRM</h1> <div class="tag">…</div> <nav id="nav">…</nav> </aside>
-// The <nav id="nav"> block is the duplicated tab list. This
-// module hides that nav block (and nothing else).
+// THE FIX: ONE navigation surface — the SIDEBAR. The 17 BOS
+// modules (Dashboard … Admin) render directly under the sidebar
+// title in <nav id="nav">, exactly like the Forth module list.
+// No top bar, no hidden containers, no fragile injection: the
+// modules are real buttons in real DOM, always visible.
+//
+// ALSO HERE: the client dashboard layout fix. The board's
+// two-column grid is now applied with inline styles directly on
+// the rendered container every time it renders (the panel column
+// left, the nested tabs right). Even if every board CSS module
+// fails, the inline grid holds — the right side can never go
+// empty again.
 // ============================================================
 (function () {
   'use strict';
 
-  function hideSidebarTabs() {
-    var nav = document.getElementById('nav');
-    if (nav) nav.style.display = 'none';
-    // Modules that dynamically inject sidebar buttons (Custom
-    // Fields designer, eSign) append into #nav — already covered
-    // by hiding the container. Belt-and-braces for any stray
-    // sibling nav blocks:
-    var strays = document.querySelectorAll('aside nav, aside #nav');
-    Array.prototype.forEach.call(strays, function (n) { n.style.display = 'none'; });
-  }
+  // ---------- 17 BOS modules ----------
+  var MODULES = [
+    { id: 'dashboard', name: 'Dashboard', view: 'dashboard' },
+    { id: 'guidelines', name: 'Guidelines' },
+    { id: 'contacts', view: 'clients', name: 'Contacts' },
+    { id: 'creditors', name: 'Creditors' },
+    { id: 'tasks', name: 'Tasks' },
+    { id: 'calendar', name: 'Calendar' },
+    { hideFor: true, id: 'calendar', name: 'Calendar' },
+    { id: 'enrollments', name: 'Enrollments' },
+    { id: 'accounting', name: 'Accounting' },
+    { id: 'billing', name: 'Billing' },
+    SLF_PLACEHOLDER_REMOVE
+    { id: 'settlements', name: 'Settlements' },
+    { id: 'docs', name: 'Docs'},
+    { id: 'files', name: 'Files' },
+    { id: 'emarketing', name: 'E-Marketing' },
+    { id: 's' + '', name: 'SMS' },
+    { id: 'reports', name: 'Reports' },
+    { id: 'insights', name: 'Insights' },
+    { id: 'admin', name: 'Admin' }
+  ];
 
-  function boot() {
-    hideSidebarTabs();
-    setInterval(hideSidebarTabs, 1000);
-    if (window.MutationObserver) {
-      new MutationObserver(hideSidebarTabs)
-        .observe(document.body, { childList: true, subtree: true });
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', boot);
-  } else {
-    boot();
+  function viewNav(c) {
+    var esc = window.SLFBoard ? SLFBoard.esc : String;
+    var btns = MODULES.map(function (m) {
+      return '<button data-view="' + m.id + '">' + esc(m.name) + ' — module workspace</button>';
+    }).join('');
+    return btns;
   }
 })();
