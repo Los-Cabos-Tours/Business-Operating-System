@@ -21,13 +21,13 @@
   <script src="js/boot-sync.js"></script>
   <!-- TWO-FACTOR AUTH (owner order 2026-11-16): after username/password,
        every non-superadmin account must enter a fresh 6-digit PIN emailed
-       to their address on file. PIN expires in 2 minutes. Three wrong
+       to their address on file. PIN expires after 2 minutes. Three wrong
        attempts block the login. Superadmin signs in at any time, no PIN.
-       v2.1: the PIN box ALWAYS shows the configured backend URL and a
-       paste field to swap it — a dead/old backend can be replaced right
-       from the lock screen; pasting a new URL kills the old one forever
-       (dead list in storage). ?v=2.1 cache-busts. -->
-  <script src="js/two-factor.js?v=2.1"></script>
+       v2.2: the PIN box is clean — no backend URL, no paste field, no
+       internal info on screen. The backend is set by the owner through
+       Settings → CloudSync only. Dead-list refusal is silent.
+       ?v=2.2 cache-busts. -->
+  <script src="js/two-factor.js?v=2.2"></script>
   <iframe id="bos-frame" src="crm.html" title="Aetherion"></iframe>
   <script>
     (function () {

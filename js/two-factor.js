@@ -1,39 +1,42 @@
 // ============================================================
-// BOS Two-Factor Authentication — email 6-digit PIN — v2.1
+// BOS Two-Factor Authentication — email 6-digit PIN — v2.2
 // Owner order (2026-11-16): every login must also enter a fresh
 // 6-digit PIN emailed to the user. SUPER ADMIN is exempt.
 // PIN expires after 2 MINUTES. Three wrong attempts block.
 //
-// v2.1 (minimal change over verified v2.0):
-//  The URL swap field is now ALWAYS visible on the PIN box,
-//  showing the currently configured backend. v2.0 hid the field
-//  when a backend existed — but the owner's device had the OLD
-//  dead URL configured, so the box kept sending to it with no
-//  on-screen way to swap it (locked out of Settings behind the
-//  PIN). Now: the lock screen itself always shows the backend
-//  and accepts a paste-to-swap, which kills the old URL (dead
-//  list) and sends the PIN to the new backend immediately.
-//
-// v2.0 (kept): no backend URL in code; dead list in browser
-//  storage; paste-to-kill; one backend only; Cancel = full
-//  sign-out + reload; resend = fresh code + fresh clock; 3
-//  wrong attempts block; expired challenges auto-clear.
+// v2.2 (owner order: no internal info on the PIN box — nothing
+// was asked for and nobody but the owner should see it):
+//  1. THE PIN BOX IS CLEAN. The backend URL, the paste field and
+//     the backend label are REMOVED from the box. It shows only:
+//     the email notice, the code input, Verify, the hint, Resend,
+//     Cancel. The backend is configured by the OWNER through
+//     Settings → CloudSync and nowhere else.
+//  2. DEAD-LIST ENFORCEMENT KEPT (silent): a backend URL on the
+//     dead list is silently refused — no PIN is sent to it.
+//  3. PASTE-TO-KILL KEPT (silent): when the owner saves a NEW URL
+//     in Settings → CloudSync, the old configured URL is added to
+//     the dead list automatically (handled by the settings page
+//     guard; the PIN box stays clean).
+//  4. Everything else kept exactly: one backend only; Cancel =
+//     full sign-out + reload; resend = fresh code + fresh clock;
+//     3 wrong attempts block; expired challenges auto-clear.
 // ============================================================
 (function () {
   'use strict';
 
+  // Embedded in the shell's iframe? The shell (index.html) runs 2FA.
   try { if (window.self !== window.top) return; } catch (e) { return; }
 
-  var VERSION = '2.1';
+  var VERSION = '2.2';
   var SESSION_KEY = 'aetherion_user';
   var USERS_KEY = 'aetherion_users';
   var PENDING_KEY = 'aetherion_2fa_pending';
   var VERIFIED_KEY = 'aetherion_2fa_verified';
   var SYNC_URL_KEY = 'aetherion_sync_url';
   var DEAD_LIST_KEY = 'aetherion_dead_backends';
-  var PIN_TTL_MS = 2 * 60 * 1000;
+  var PIN_TTL_MS = 2 * 60 * 1000;          // owner order: 2 minutes
   var VERIFIED_TTL_MS = 12 * 60 * 60 * 1000;
-  var MAX_ATTEMPTS = 3;
+  var MAX_ATTEMPTS = 3;                    // owner order: 3 wrong attempts block
   var SCRIPT_URL_RE = /^https:\/\/script\.google[a-z.]*\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec/;
 
   function ls(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -47,7 +50,7 @@
     } catch (e) { return []; }
   }
 
-  // ---- dead list (lives in browser storage, not in code) ----
+  // ---- dead list (browser storage — never displayed) ----
   function getDeadList() {
     try {
       var a = JSON.parse(ls(DEAD_LIST_KEY) || '[]');
@@ -75,25 +78,11 @@
     }
   }
 
-  // ---- THE one backend ----
+  // ---- THE one backend (set by the OWNER in Settings → CloudSync) ----
   function getSyncUrl() { return (ls(SYNC_URL_KEY) || '').trim(); }
-  function backendState() {
+  function backendUsable() {
     var url = getSyncUrl();
-    if (!url) return { ok: false, url: '', dead: false, missing: true };
-    if (isDeadUrl(url)) return { ok: false, url: url, dead: true, missing: false };
-    if (!SCRIPT_URL_RE.test(url)) return { ok: false, url: url, dead: false, missing: false };
-    return { ok: true, url: url, dead: false, missing: false };
-  }
-  // paste-to-kill: adopting a new URL kills the old one forever
-  function adoptNewBackend(url) {
-    var old = getSyncUrl();
-    if (old && old !== url) addDeadUrl(old);
-    lsSet(SYNC_URL_KEY, url);
-  }
-
-  function setStatus(msg) {
-    var el = document.getElementById('bos-2fa-status');
-    if (el) el.textContent = msg;
+    return !!url && !isDeadUrl(url) && SCRIPT_URL_RE.test(url);
   }
 
   // ---- session discovery ----
@@ -185,14 +174,9 @@
     return null;
   }
 
-  // ---- email the PIN to THE one live backend ----
+  // ---- email the PIN (silent refusal of dead backends) ----
   function sendPinEmail(email, pin, username) {
-    var st = backendState();
-    if (!st.ok) {
-      if (st.dead) return { sent: false, url: st.url, dead: true, error: 'the configured backend is on the dead list — send REFUSED' };
-      if (st.missing) return { sent: false, url: '', dead: false, error: 'no backend URL is configured on this device' };
-      return { sent: false, url: st.url, dead: false, error: 'the configured URL is not a valid Apps Script /exec URL' };
-    }
+    if (!backendUsable()) return false;
     var payload = {
       type: 'bos_2fa_pin',
       email: email,
@@ -201,15 +185,13 @@
       ts: Date.now()
     };
     try {
-      fetch(st.url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(payload) })
+      fetch(getSyncUrl(), { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(payload) })
         .catch(function () {});
-      return { sent: true, url: st.url, dead: false, error: '' };
-    } catch (e) {
-      return { sent: false, url: st.url, dead: false, error: String(e && e.message || e) };
-    }
+      return true;
+    } catch (e) { return false; }
   }
 
-  // ---- overlay UI ----
+  // ---- overlay UI — CLEAN (v2.2): nothing internal on screen ----
   var overlay = null;
   function buildOverlay() {
     if (document.getElementById('bos-2fa-overlay')) return;
@@ -229,19 +211,12 @@
       '<button id="bos-2fa-resend" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Resend code</button>' +
       '<button id="bos-2fa-cancel" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(240,234,214,0.2);background:transparent;color:#A8B8C8;font-size:11px;cursor:pointer;">Cancel</button>' +
       '</div>' +
-      '<div id="bos-2fa-urlrow" style="margin-top:14px;text-align:left;border-top:1px solid rgba(240,234,214,0.1);padding-top:12px;">' +
-      '<div id="bos-2fa-urlrow-reason" style="font-size:10px;color:#7A8B9C;margin-bottom:6px;word-break:break-all;line-height:1.4;"></div>' +
-      '<input id="bos-2fa-url" type="url" placeholder="Paste your NEW Apps Script /exec URL here" style="width:100%;box-sizing:border-box;padding:9px 10px;font-size:11px;background:rgba(10,22,40,0.6);border:1px solid rgba(201,168,76,0.2);border-radius:8px;color:#F0EAD6;outline:none;" />' +
-      '<button id="bos-2fa-urlsend" style="width:100%;margin-top:6px;padding:8px;border-radius:8px;border:1px solid rgba(201,168,76,0.45);background:rgba(201,168,76,0.15);color:#C9A84C;font-size:11px;font-weight:600;cursor:pointer;">Save URL &amp; Send PIN to this URL</button>' +
-      '</div>' +
-      '<div id="bos-2fa-status" style="font-size:10px;color:#7A8B9C;margin-top:14px;word-break:break-all;line-height:1.5;text-align:left;"></div>' +
       '</div>';
     document.body.appendChild(overlay);
     document.getElementById('bos-2fa-verify').addEventListener('click', function () { verifyPin(); });
     document.getElementById('bos-2fa-resend').addEventListener('click', function () { resendPin(); });
     document.getElementById('bos-2fa-cancel').addEventListener('click', function () { cancelChallenge(); });
     document.getElementById('bos-2fa-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') verifyPin(); });
-    document.getElementById('bos-2fa-urlsend').addEventListener('click', function () { saveUrlAndSend(); });
   }
 
   function maskEmail(email) {
@@ -263,48 +238,6 @@
     }
     document.getElementById('bos-2fa-input').value = '';
     document.getElementById('bos-2fa-input').focus();
-    refreshUrlRow();
-  }
-
-  // v2.1: ALWAYS show the backend and the swap field — never hidden
-  function refreshUrlRow() {
-    var row = document.getElementById('bos-2fa-urlrow');
-    var reason = document.getElementById('bos-2fa-urlrow-reason');
-    if (!row) return;
-    row.style.display = 'block';
-    var st = backendState();
-    if (st.dead) {
-      reason.textContent = 'Current backend (DEAD): ' + st.url + ' — paste your NEW /exec URL below and press Save URL & Send.';
-    } else if (st.missing) {
-      reason.textContent = 'No backend URL configured — paste your NEW /exec URL below and press Save URL & Send.';
-    } else if (!st.ok) {
-      reason.textContent = 'Current backend (INVALID): ' + st.url + ' — paste the correct /exec URL below.';
-    } else {
-      reason.textContent = 'Current backend: ' + st.url + ' — if this is the old one, paste your NEW /exec URL below and press Save URL & Send.';
-    }
-  }
-
-  function saveUrlAndSend() {
-    var p = getPending();
-    if (!p) { hideOverlay(); return; }
-    var urlEl = document.getElementById('bos-2fa-url');
-    var url = ((urlEl && urlEl.value) || '').trim();
-    if (!SCRIPT_URL_RE.test(url)) {
-      setStatus('That does not look like an Apps Script /exec URL. It must start with https://script.google.com/ and end with /exec.');
-      return;
-    }
-    if (isDeadUrl(url)) {
-      setStatus('That URL is on the dead list — it can never be used. Paste the NEW one.');
-      return;
-    }
-    adoptNewBackend(url);
-    var r = sendPinEmail(p.email, p.pin, p.session.username);
-    refreshUrlRow();
-    if (r.sent) {
-      setStatus('URL SAVED and PIN sent to the new backend:\n' + url + '\nCheck ' + (p.email ? maskEmail(p.email) : 'your email') + ' (and spam).');
-    } else {
-      setStatus('URL SAVED, but PIN send failed: ' + r.error);
-    }
   }
 
   function hideOverlay() {
@@ -313,6 +246,7 @@
     overlay = null;
   }
 
+  // ---- toast: superadmin skip explanation (owner rule) ----
   function toast(msg) {
     var t = document.getElementById('bos-2fa-toast');
     if (t) return;
@@ -327,6 +261,7 @@
     }, 6000);
   }
 
+  // ---- challenge lifecycle ----
   function startChallenge(s, found) {
     var email = findUserEmail(s);
     var pin = String(Math.floor(100000 + Math.random() * 900000));
@@ -342,18 +277,7 @@
     lsSet(PENDING_KEY, JSON.stringify(pending));
     try { localStorage.removeItem(found.key || SESSION_KEY); } catch (e) {}
     showOverlay(pending);
-    if (email) {
-      var r = sendPinEmail(email, pin, s.username);
-      if (r.sent) {
-        setStatus('PIN request SENT to the one backend:\n' + r.url + '\nCheck that address (and spam) — code expires in 2 minutes.');
-      } else if (r.dead) {
-        setStatus('PIN NOT SENT — REFUSED. The configured backend is on the dead list:\n' + r.url + '\nPaste your NEW /exec URL below and press Save URL & Send.');
-      } else {
-        setStatus('PIN request NOT SENT — ' + r.error + '.\nPaste your NEW /exec URL below and press Save URL & Send.');
-      }
-    } else {
-      setStatus('PIN NOT SENT — no email address on file for "' + s.username + '". Set it in Users & Access.');
-    }
+    sendPinEmail(email, pin, s.username); // silent if backend not usable
   }
 
   function resendPin() {
@@ -365,19 +289,7 @@
     lsSet(PENDING_KEY, JSON.stringify(p));
     var errEl = document.getElementById('bos-2fa-error');
     errEl.textContent = '';
-    refreshUrlRow();
-    if (p.email) {
-      var r = sendPinEmail(p.email, p.pin, p.session.username);
-      if (r.sent) {
-        setStatus('RESENT to the one backend:\n' + r.url);
-      } else if (r.dead) {
-        setStatus('RESEND REFUSED — the configured backend is on the dead list.\nPaste your NEW /exec URL below and press Save URL & Send.');
-      } else {
-        setStatus('RESEND FAILED — ' + r.error + '.\nPaste your NEW /exec URL below and press Save URL & Send.');
-      }
-    } else {
-      setStatus('RESEND FAILED — no email on file for "' + p.session.username + '".');
-    }
+    sendPinEmail(p.email, p.pin, p.session.username); // silent if backend not usable
     document.getElementById('bos-2fa-input').focus();
   }
 
@@ -433,7 +345,7 @@
       hideOverlay();
       if (lastSuperadminId !== s.id) {
         lastSuperadminId = s.id;
-        toast('Signed in as superadmin — PIN step is skipped (owner rule). If you expected a PIN code, this account is superadmin.');
+        toast('Signed in as superadmin — PIN step is skipped (owner rule).');
       }
       return;
     }
