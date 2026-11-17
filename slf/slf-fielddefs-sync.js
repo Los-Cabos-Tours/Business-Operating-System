@@ -1,5 +1,5 @@
 // ============================================================
-// SLF Field-Definitions Sync — v1
+// SLF Field-Definitions Sync — v1.1
 // Owner order (2026-11-17): every user must see the same client
 // profile info everywhere. Custom fields (Phone, E-Mail, DOB,
 // SSN, Address, and anything the owner adds later) were stored
@@ -13,6 +13,13 @@
 //    namespace as SLF CloudSync (user=slf-<ns>) and merges them
 //    into local storage: union by id; on conflict the REMOTE
 //    copy wins (the shared store is the source of truth).
+//  - PUSHES AT BOOT once (v1.1): the creator's device is the
+//    only place the definitions exist right now — the backend
+//    has never received them. A one-time push on every boot
+//    (guarded by a daily throttle) uploads any local
+//    definitions that are missing from the backend. After the
+//    first load on the creator's browser, every device gets
+//    them via pull.
 //  - Pushes both keys whenever they change locally (debounced),
 //    as its own small payload — the backend merges per-key, so
 //    clients/cases/history are never touched by these pushes.
@@ -32,7 +39,8 @@
   var DEFS_KEY = 'slf_crm.fielddefs.v1';
   var SECS_KEY = 'slf_crm.sections.v1';
   var ENABLE_KEY = 'slf_crm.sync.enabled';
-  var TS_KEY = 'slf_crm.fielddefs.last_sync';
+  var BOOT_PUSH_AT_KEY = 'slf_crm.fielddefs.boot_push_at';
+  var BOOT_PUSH_THROTTLE_MS = 24 * 60 * 60 * 1000; // one boot-push per day max
   var POLL_MS = 60000;
   var DEBOUNCE_MS = 2000;
   var PULL_TIMEOUT_MS = 8000;
@@ -55,7 +63,6 @@
     try { var v = JSON.parse(_origGet(key) || '[]'); return Array.isArray(v) ? v : []; }
     catch (e) { return []; }
   }
-  function writeArr(key, arr) { _origSet(key, JSON.stringify(arr)); }
 
   // Union by id; remote wins on conflict (shared store = truth).
   function unionRemoteWins(localArr, remoteArr) {
@@ -104,7 +111,7 @@
     var payload = {};
     payload[DEFS_KEY] = _origGet(DEFS_KEY) || '[]';
     payload[SECS_KEY] = _origGet(SECS_KEY) || '[]';
-    payload[TS_KEY] = Date.now().toString();
+    payload['slf_crm.fielddefs.last_sync'] = Date.now().toString();
     var target = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'user=' + encodeURIComponent(getNamespace());
     fetch(target, {
       method: 'POST', mode: 'no-cors',
@@ -160,6 +167,14 @@
 
   // ---- lifecycle ----
   function start() {
+    // v1.1 BOOT PUSH: the creator's device holds definitions the
+    // backend has never received. Push them up (throttled to once
+    // per day) so every other device can pull them.
+    var lastPush = Number(_origGet(BOOT_PUSH_AT_KEY)) || 0;
+    if (readArr(DEFS_KEY).length > 0 && Date.now() - lastPush > BOOT_PUSH_THROTTLE_MS) {
+      pushNow();
+      _origSet(BOOT_PUSH_AT_KEY, String(Date.now()));
+    }
     pullOnce();
     if (_poll === null) _poll = setInterval(pullOnce, POLL_MS);
   }
