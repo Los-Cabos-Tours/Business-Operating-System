@@ -7,16 +7,14 @@
 // reported visibly instead of a dead page.
 // When modules change, bump VERSION (cache-busting).
 //
-// 3.32: forth-rows v8 — Workflow History link and Request
-//       Release removed (History tab covers the first; the
-//       second was ordered out). Company Assignment and Change
-//       Secondary Assignment are SUPERADMIN-ONLY dropdowns
-//       listing agents for lead assignment. Restored side
-//       info: File Type row and Income/Expenses/Net values.
+// 3.33: board header v9 — the lead's NAME renders BIG at the
+//       very top of the Client Dashboard (Forth spec: the
+//       contact name is the dashboard's large page title).
+//       Nothing else changed.
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.32';
+  var VERSION = '3.33';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',
