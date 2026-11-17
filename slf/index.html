@@ -40,7 +40,7 @@ input:focus, select:focus, textarea:focus { outline:1px solid var(--gold); }
 .bar-row .bar { flex:1; height:14px; background:rgba(255,255,255,0.05); border-radius:7px; overflow:hidden; }
 .bar-row .bar i { display:block; height:100%; background:linear-gradient(90deg, rgba(201,168,76,0.5), var(--gold)); }
 .bar-row .cnt { width:26px; text-align:right; color:var(--muted); }
-.modal-bg { position:fixed; inset:0; background:rgba(4,10,20,0.75); display:none; align-items:flex-start; justify-content:center; z-index:50; padding:40px 16px; overflow:auto; }
+.modal-bg { position:fixed; inset:0; background:rgba(4,10,20,0.75); display:none; align-items:center; justify-content:center; z-index:50; padding:40px 16px; overflow:auto; }
 .modal-bg.open { display:flex; }
 .modal { background:#0E1F3C; border:1px solid var(--line); border-radius:14px; padding:24px; width:100%; max-width:560px; }
 .modal h3 { margin:0 0 16px; color:var(--gold); font-size:15px; font-family:Cinzel,serif; letter-spacing:1px; }
@@ -89,7 +89,7 @@ a.back:hover { color:var(--gold); }
     <div class="fgrid">
       <div class="full"><label class="fl">Full Name *</label><input id="c-name" placeholder="Jane Doe" /></div>
       <div><label class="fl">Email</label><input id="c-email" type="email" placeholder="jane@email.com" /></div>
-      <div><label class="fl">Phone</label><input id="c-phone" placeholder="+1 555 000 1234" /></div>
+      <div><label class="fl">Phone</label><input id="c-phone" type="tel" placeholder="+1 555 000 1234" /></div>
       <div class="full"><label class="fl">Notes</label><textarea id="c-notes" rows="3" placeholder="Context, referral source, best contact time..."></textarea></div>
     </div>
     <div class="modal-actions">
@@ -125,14 +125,19 @@ a.back:hover { color:var(--gold); }
 </div>
 
 <!-- Session gate: no signed-in BOS session, no Student Loans data.
-     Redirects to the main entrance where login + 2FA run. -->
+     Redirects to the main entrance where login runs. -->
 <script src="../js/session-gate.js"></script>
 <!-- Boot sync: pulls ALL shared data (main BOS + Student Loans) from the
      configured sync backend before this app renders, so every device
-     shows the same information. Auto-enables SLF data sync (owner order:
-     one shared backend, all data shared with all users). -->
+     shows the same information. Sync is ALWAYS on (owner order:
+     no user can disable it; the flag is forced true and re-asserted). -->
 <script src="../js/boot-sync.js"></script>
 <script src="../js/settings.js"></script>
-<script src="slf-guard.js?v=3.15"></script>
+<!-- SLF loader (v3.20): loads every CRM module through the crash-proof
+     parse gate. Includes: the UI guard (no CLOUD SYNC panel, sync forced
+     on permanently, delete controls hidden from non-superadmins) and the
+     single-navigation module (duplicate left sidebar tabs hidden — the
+     Forth-style top module bar is the only navigation). -->
+<script src="slf-guard.js?v=3.20"></script>
 </body>
 </html>

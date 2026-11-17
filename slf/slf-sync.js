@@ -1,27 +1,18 @@
 // ============================================================
-// SLF CloudSync — Phase 1, Task 1
-// Synchronizes slf_crm.* storage keys to the same sync backend
-// as the main BOS (Google Apps Script or Firebase), under a
-// SEPARATE namespace (slf-<namespace>) so SLF and main BOS data
-// can never mix.
+// SLF CloudSync — v2 (owner order 2026-11-17)
+// SYNC IS PERMANENT. The CLOUD SYNC sidebar panel, the status
+// chip, and the Disable Sync button are REMOVED at the source:
+// this module no longer injects any sync UI. enable()/disable()
+// are no-ops — sync cannot be turned off by anyone. The sync
+// flag is forced to 'true' at load (boot-sync also does this).
 //
-// Design decisions (documented for independent review):
-//  - OFF by default. No customer data is transmitted until the
-//    operator opts in from the SLF UI. Reason: the main BOS sync
-//    endpoint identifies datasets by a URL query parameter
-//    (user=<ns>), which is NOT access control. Opt-in is the
-//    smallest safe behavior for sensitive loan data.
-//  - Local-first: sync failures never block or lose local writes.
-//  - Merge: last-write-wins by record updatedAt (same conflict
-//    model as main BOS CloudSync). Deleted record IDs are kept in
-//    tombstones and are never resurrected.
-//  - Remote payloads are validated before merge: wrong shape or
-//    non-array values for array keys => pull discarded, local
-//    data untouched.
-//  - Never logs record contents — only counts and IDs.
-//  - Self-contained UI: injects its own status chip and controls
-//    into the sidebar; slf-app.js and existing SLF views are
-//    never modified.
+// Data behavior unchanged from v1: clients, cases, history,
+// counter, tombstones sync to the configured backend under the
+// slf- namespace, merge last-write-wins by updatedAt, tombstones
+// prevent deleted records from resurrecting, remote payloads
+// are validated before merge, and nothing here ever logs record
+// contents. The 3-second freshness heartbeat lives in
+// slf-fast-sync.js; this module's own poll remains as backup.
 // ============================================================
 var SLFSync = (function () {
   'use strict';
@@ -40,28 +31,21 @@ var SLFSync = (function () {
   var _debounceTimer = null;
   var _pushInFlight = false;
 
-  // ---- configuration (mirrors main BOS keys, slf-prefixed ns) ----
+  // ---- configuration ----
   function getUrl() { return (_origGet('aetherion_sync_url') || '').trim(); }
   function getNamespace() {
     var ns = (_origGet('aetherion_sync_namespace') || 'default').trim() || 'default';
     return 'slf-' + ns;
   }
-  function isEnabled() { return _origGet(ENABLE_KEY) === 'true'; }
+  function isEnabled() { return true; } // PERMANENT: sync can never be off
   function isFirebase(u) { return u.indexOf('firebaseio.com') !== -1; }
 
-  // ---- status chip ----
-  function setChip(state, label) {
-    var c = document.getElementById('slf-sync-chip');
-    if (!c) return;
-    var txt;
-    if (state === 'syncing') { c.style.color = 'rgba(240,234,214,0.8)'; txt = 'Syncing...'; }
-    else if (state === 'synced') {
-      c.style.color = '#6BCB77';
-      txt = 'Synced ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    else if (state === 'error') { c.style.color = '#FF8A5C'; txt = label || 'Sync Error'; }
-    else { c.style.color = 'rgba(240,234,214,0.6)'; txt = label || 'Local Only'; }
-    c.textContent = txt;
+  // ---- status chip: no longer rendered (panel removed) ----
+  function setChip() { /* no UI — sync is silent and permanent */ }
+
+  // ---- permanent-on guard ----
+  function forceOn() {
+    try { if (_origGet(ENABLE_KEY) !== 'true') _origSet(ENABLE_KEY, 'true'); } catch (e) {}
   }
 
   // ---- tombstones ----
@@ -70,8 +54,6 @@ var SLFSync = (function () {
   }
   function setTombs(t) { _origSet(TOMB_KEY, JSON.stringify(t)); }
 
-  // Record IDs removed from a saved array so other devices'
-  // pushes cannot resurrect intentionally deleted records.
   function trackDeletions(key, newValue) {
     try {
       var type = MERGE_KEYS[key];
@@ -94,8 +76,6 @@ var SLFSync = (function () {
     } catch (e) { /* deletion tracking must never throw */ }
   }
 
-  // Merge two id-keyed arrays, last-write-wins by updatedAt,
-  // excluding tombstoned ids on both sides.
   function mergeArr(localArr, remoteArr, tombList) {
     var tombSet = {};
     (tombList || []).forEach(function (id) { tombSet[id] = true; });
@@ -113,7 +93,6 @@ var SLFSync = (function () {
     return Object.keys(map).map(function (id) { return map[id]; });
   }
 
-  // History: union by ts+action signature, newest first, cap 500.
   function mergeHistory(localStr, remoteStr) {
     var local = [], remote = [];
     try { local = JSON.parse(localStr || '[]'); } catch (e) {}
@@ -129,7 +108,6 @@ var SLFSync = (function () {
     return merged;
   }
 
-  // Counters: max per kind so id sequences never collide across devices.
   function mergeCounter(localStr, remoteStr) {
     var local = {}, remote = {};
     try { local = JSON.parse(localStr || '{}'); } catch (e) { local = {}; }
@@ -141,7 +119,6 @@ var SLFSync = (function () {
     return out;
   }
 
-  // Merge tombstones: union of deleted ids from all devices.
   function mergeTombs(localStr, remoteStr) {
     var local = getTombs(), remote = {};
     try { remote = JSON.parse(remoteStr || '{}'); } catch (e) { remote = {}; }
@@ -155,7 +132,7 @@ var SLFSync = (function () {
     return result;
   }
 
-  // ---- hook local writes (same technique as main BOS CloudSync) ----
+  // ---- hook local writes ----
   localStorage.setItem = function (key, value) {
     _origSet(key, value);
     if (_writing) return;
@@ -169,22 +146,17 @@ var SLFSync = (function () {
   function pushNow() {
     if (!isEnabled()) return;
     var rawUrl = getUrl();
-    if (!rawUrl) { setChip('off', 'Local Only (no sync URL)'); return; }
-    if (_pushInFlight) return; // no duplicate in-flight pushes
+    if (!rawUrl) { return; }
+    if (_pushInFlight) return;
     _pushInFlight = true;
-    setChip('syncing');
     var ts = Date.now().toString();
     var payload = { slf_last_updated: ts };
     KEYS.forEach(function (k) { var v = _origGet(k); if (v != null) payload[k] = v; });
     var done = function () {
       _pushInFlight = false;
-      setChip('synced');
       _origSet('slf_crm.sync.last_push', ts);
     };
-    var fail = function () {
-      _pushInFlight = false;
-      setChip('error', 'Sync Error (push)');
-    };
+    var fail = function () { _pushInFlight = false; };
     if (isFirebase(rawUrl)) {
       var ns = encodeURIComponent(getNamespace().replace(/^slf-/, ''));
       var fbUrl = rawUrl.replace(/\/$/, '') + '/slf_' + ns + '.json';
@@ -196,8 +168,6 @@ var SLFSync = (function () {
         .catch(fail);
       return;
     }
-    // Apps Script: no-cors POST; endpoint reads e.postData.contents and
-    // stores raw strings under the user namespace — format identical to main BOS.
     var target = rawUrl + (rawUrl.indexOf('?') >= 0 ? '&' : '?') + 'user=' + encodeURIComponent(getNamespace());
     fetch(target, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(payload) })
       .then(done)
@@ -213,17 +183,15 @@ var SLFSync = (function () {
   function pullOnce() {
     if (!isEnabled()) return;
     var rawUrl = getUrl();
-    if (!rawUrl) { setChip('off', 'Local Only (no sync URL)'); return; }
-    setChip('syncing');
+    if (!rawUrl) { return; }
     if (isFirebase(rawUrl)) {
       var ns = encodeURIComponent(getNamespace().replace(/^slf-/, ''));
       fetch(rawUrl.replace(/\/$/, '') + '/slf_' + ns + '.json')
         .then(function (r) { return r.json(); })
         .then(function (data) { applyRemote(data); })
-        .catch(function () { setChip('error', 'Sync Error (pull)'); });
+        .catch(function () { /* offline: local data stays */ });
       return;
     }
-    // Apps Script JSONP pull — same technique as main BOS.
     var cb = 'slfsync_cb_' + Date.now();
     var script = null;
     window[cb] = function (data) {
@@ -234,26 +202,21 @@ var SLFSync = (function () {
     script = document.createElement('script');
     script.src = rawUrl + (rawUrl.indexOf('?') >= 0 ? '&' : '?') + 'user=' + encodeURIComponent(getNamespace()) + '&callback=' + cb;
     script.onerror = function () {
-      setChip('error', 'Sync Error (pull)');
       if (script) script.remove();
       window[cb] = undefined;
     };
     document.head.appendChild(script);
     setTimeout(function () {
       if (window[cb]) { window[cb] = undefined; if (script) script.remove(); }
-    }, POLL_MS);
+    }, 8000);
   }
 
   // ---- apply remote (validated; never overwrite on bad data) ----
   function applyRemote(data) {
-    if (!data || typeof data !== 'object' || Array.isArray(data)) {
-      setChip('error', 'Sync Error (bad remote payload)');
-      return;
-    }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) { return; }
     var tombs = getTombs();
     var changed = false;
 
-    // Merge tombstones first so array merges respect deletions from both sides.
     if (data[TOMB_KEY] !== undefined) {
       tombs = mergeTombs(_origGet(TOMB_KEY), data[TOMB_KEY]);
       _writing = true;
@@ -262,12 +225,12 @@ var SLFSync = (function () {
 
     KEYS.forEach(function (k) {
       var remote = data[k];
-      if (remote === undefined || remote === null) return; // incomplete remote: leave local untouched
+      if (remote === undefined || remote === null) return;
       var parsed;
       try { parsed = (typeof remote === 'string') ? JSON.parse(remote) : remote; } catch (e) { return; }
       var localRaw = _origGet(k) || null;
       if (k === 'slf_crm.clients.v1' || k === 'slf_crm.cases.v1') {
-        if (!Array.isArray(parsed)) return; // invalid remote shape: discard this key
+        if (!Array.isArray(parsed)) return;
         var localArr = [];
         try { localArr = localRaw ? JSON.parse(localRaw) : []; } catch (e) { localArr = []; }
         if (!Array.isArray(localArr)) localArr = [];
@@ -290,7 +253,6 @@ var SLFSync = (function () {
       }
     });
 
-    setChip('synced');
     _origSet('slf_crm.sync.last_pull', Date.now().toString());
     if (changed && window.SLF && typeof window.SLF.init === 'function') {
       try { window.SLF.init(); } catch (e) { /* re-render must never break sync */ }
@@ -307,96 +269,21 @@ var SLFSync = (function () {
     clearTimeout(_debounceTimer);
   }
 
-  // ---- UI (self-contained; injected into the stable sidebar, so
-  //      slf-app.js view re-renders never wipe it) ----
-  function injectUI() {
-    if (document.getElementById('slf-sync-box')) return;
-    var aside = document.querySelector('aside');
-    if (!aside) return;
-    var box = document.createElement('div');
-    box.id = 'slf-sync-box';
-    box.style.cssText = 'padding:14px 20px;border-top:1px solid var(--line);';
-
-    var title = document.createElement('div');
-    title.textContent = 'CLOUD SYNC';
-    title.style.cssText = 'font-size:9.5px;color:var(--muted);letter-spacing:1.5px;margin-bottom:6px;';
-    box.appendChild(title);
-
-    var chip = document.createElement('div');
-    chip.id = 'slf-sync-chip';
-    chip.style.cssText = 'font-size:11px;color:var(--muted);margin-bottom:8px;';
-    chip.textContent = 'Local Only';
-    box.appendChild(chip);
-
-    var btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;gap:6px;';
-    var toggleBtn = document.createElement('button');
-    toggleBtn.id = 'slf-sync-toggle';
-    toggleBtn.className = 'btn small ghost';
-    toggleBtn.style.cssText = 'flex:1;font-size:10.5px;padding:5px 8px;';
-    toggleBtn.addEventListener('click', function () {
-      if (isEnabled()) SLFSync.disable(); else SLFSync.enable();
-      refreshUI();
-    });
-    btnRow.appendChild(toggleBtn);
-    box.appendChild(btnRow);
-
-    var note = document.createElement('div');
-    note.id = 'slf-sync-note';
-    note.style.cssText = 'font-size:9.5px;color:var(--muted);margin-top:6px;line-height:1.4;';
-    box.appendChild(note);
-
-    aside.appendChild(box);
-  }
-
-  function refreshUI() {
-    var toggleBtn = document.getElementById('slf-sync-toggle');
-    var note = document.getElementById('slf-sync-note');
-    var enabled = isEnabled();
-    if (toggleBtn) toggleBtn.textContent = enabled ? 'Disable Sync' : 'Enable Cloud Sync';
-    if (note) {
-      if (enabled) {
-        note.textContent = 'Namespace: ' + getNamespace() + '. Sensitive loan data syncs to your configured backend. Disable any time; local data always stays.';
-      } else {
-        note.textContent = isEnabled() ? '' : 'Off by default. Enabling syncs SLF data to your configured BOS sync backend (namespace: ' + getNamespace() + '). No data leaves this device while off.';
-      }
-    }
-    if (!enabled) setChip('off', 'Local Only');
-  }
-
-  // ---- init (runs on script load / DOM ready) ----
+  // ---- init ----
   function init() {
-    injectUI();
-    if (isEnabled()) {
-      refreshUI();
-      setChip('syncing');
-      pullOnce();
-      startPolling();
-    } else {
-      refreshUI();
-      setChip('off');
-    }
+    forceOn(); // permanent: flip any stale 'false' back on
+    pullOnce();
+    startPolling();
   }
 
   // ---- public API ----
   var SLFSync = {
-    enable: function () {
-      _writing = true;
-      try { _origSet(ENABLE_KEY, 'true'); } finally { _writing = false; }
-      setChip('syncing');
-      pushNow();
-      pullOnce();
-      startPolling();
-    },
-    disable: function () {
-      _writing = true;
-      try { _origSet(ENABLE_KEY, 'false'); } finally { _writing = false; }
-      stopPolling();
-      setChip('off');
-    },
+    enable: function () { forceOn(); pullOnce(); startPolling(); }, // keep: idempotent, always on
+    disable: function () { forceOn(); }, // NO-OP: sync can never be disabled (owner order)
     status: function () {
       return {
-        enabled: isEnabled(),
+        enabled: true,
+        permanent: true,
         namespace: getNamespace(),
         syncUrlConfigured: !!getUrl(),
         lastPush: _origGet('slf_crm.sync.last_push') || null,
@@ -406,7 +293,6 @@ var SLFSync = (function () {
     push: pushNow,
     pull: pullOnce,
     init: init,
-    // Test hooks (synthetic-data testing only; no record contents ever logged)
     _test: {
       mergeArr: mergeArr,
       mergeHistory: mergeHistory,
