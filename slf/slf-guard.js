@@ -12,24 +12,23 @@
 // (the controller).
 //
 // 3.18: slf-fast-sync.js — ONE consolidated pull every 3 seconds
-//       (owner order 2026-11-17: everything syncs every 3s, no
-//       exceptions; hidden tabs poll every 30s to protect the
-//       backend quota) dispatched to all sync modules.
-//       slf-delete-guard.js — deletion is SUPERADMIN-ONLY
-//       (owner order: users cannot delete files/records; only
-//       the superadmin can).
-//       FIXES a 3.17 bug: the loop iterated backwards, loading
-//       modules in reverse order.
+//       dispatched to all sync modules; slf-delete-guard.js —
+//       deletion is SUPERADMIN-ONLY; fixes the 3.17 reversed
+//       module load order.
+// 3.19: slf-ui-guard.js — owner order 2026-11-17: the CLOUD SYNC
+//       sidebar panel (status chip, Disable Sync button, namespace
+//       note) is removed from the UI; sync is forced on forever;
+//       every delete control is hidden from non-superadmin users.
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.18';
+  var VERSION = '3.19';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',
     'slf-board-main.js',
     'slf-notes-patch.js', 'slf-history-live.js', 'slf-board-keepopen.js', 'slf-board-hook.js', 'slf-bos-nav-final.js', 'slf-forth-search.js',
-    'slf-fielddefs-sync.js', 'slf-board-sync.js', 'slf-fast-sync.js', 'slf-delete-guard.js'];
+    'slf-fielddefs-sync.js', 'slf-board-sync.js', 'slf-fast-sync.js', 'slf-delete-guard.js', 'slf-ui-guard.js'];
   var failures = [];
   var i, m, ok, xhr;
 
