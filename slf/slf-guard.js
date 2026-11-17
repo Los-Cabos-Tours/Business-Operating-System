@@ -11,17 +11,20 @@
 // decorate render/setTab/panel MUST load AFTER slf-board-main.js
 // (the controller). The two nav modules that loaded before it
 // broke every tab click — removed in this version.
+//
+// 3.16: adds slf-fielddefs-sync.js — custom field definitions
+// and sections now sync to every device (owner order
+// 2026-11-17: all users must see the same profile info).
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.15';
+  var VERSION = '3.16';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
-    'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js',
-    'slf-board-forms.js', 'slf-board-panel.js',
+    'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',
     'slf-board-main.js',
-    'slf-notes-patch.js', 'slf-history-live.js', 'slf-board-keepopen.js', 'slf-board-hook.js',
-    'slf-bos-nav-final.js', 'slf-forth-search.js'];
+    'slf-notes-patch.js', 'slf-history-live.js', 'slf-board-keepopen.js', 'slf-board-hook.js', 'slf-bos-nav-final.js', 'slf-forth-search.js',
+    'slf-fielddefs-sync.js'];
   var failures = [];
   var i, m, ok, xhr;
 

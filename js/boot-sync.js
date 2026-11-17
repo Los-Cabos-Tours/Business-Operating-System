@@ -11,6 +11,13 @@
 // still has it stored gets silently migrated to the owner's
 // current deployment. No paste, no settings screen.
 //
+// v2.1 (owner order 2026-11-17): the SLF boot pull now also
+// carries the custom field definitions (slf_crm.fielddefs.v1)
+// and sections (slf_crm.sections.v1), so a fresh device shows
+// the full client profile (Phone, E-Mail, DOB, SSN, Address...)
+// from the very first open, not just after the SLF page's own
+// pull. Same merge rules: union by id, remote fills gaps.
+//
 // GAPS THIS CLOSES (kept from v1):
 //  1. SLF loan-data sync is opt-in PER DEVICE. Now: enabled
 //     automatically on every device (one shared backend, all
@@ -43,7 +50,7 @@
   var PULL_TIMEOUT_MS = 8000;
   var MAX_STALE_MS = 1000 * 60 * 5; // boot-pull at most every 5 min
 
-  var SLF_KEYS = ['slf_crm.clients.v1', 'slf_crm.cases.v1', 'slf_crm.history.v1', 'slf_crm.counter.v1', 'slf_crm.tombstones.v1'];
+  var SLF_KEYS = ['slf_crm.clients.v1', 'slf_crm.cases.v1', 'slf_crm.history.v1', 'slf_crm.counter.v1', 'slf_crm.tombstones.v1', 'slf_crm.fielddefs.v1', 'slf_crm.sections.v1'];
   var BOS_KEYS = ['aetherion_guests', 'aetherion_bookings', 'aetherion_tasks', 'aetherion_operators', 'aetherion_resorts', 'aetherion_settings', 'aetherion_users', 'aetherion_webleads', 'aetherion_activitylog', 'aetherion_tombstones'];
 
   function getOrig(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
