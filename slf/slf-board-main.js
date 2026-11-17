@@ -5,6 +5,12 @@
 // highlight sync). They now call SLFBoard.render() so the full
 // chain runs. The Update Status block is byte-identical to #34
 // (user-approved placement — DO NOT MOVE).
+// v8 (2026-11-17): the .bwrap two-column grid now ALSO carries an
+// inline style fallback. If the CSS module chain is ever blocked
+// or stale, the inline style alone guarantees: Client Information
+// panel on the LEFT (340px), nested tabs on the RIGHT filling the
+// rest. Owner reported the right side rendering empty — inline
+// style makes that impossible regardless of stylesheet state.
 'use strict';
 (function () {
   function displayLine(tab, r) {
@@ -70,7 +76,11 @@
       // Clone, Create Order, Budget Analysis, Creditors, Enrollment,
       // Settlements, Add Alert, Favorites)
       (navBar ? navBar : '') +
-      '<div class="bwrap">' +
+      // Two-column layout: panel LEFT, tabs RIGHT. The inline style
+      // is the fallback guarantee — even if the stylesheet chain
+      // fails, the columns hold (owner: right side must never be
+      // empty). The .bwrap class keeps its responsive CSS on top.
+      '<div class="bwrap" style="display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;align-items:start;">' +
       '<div class="bleft">' + SLFBoard.panel.infoPanel(c) + '</div>' +
       '<div class="bright">' +
       '<div class="btabs">' + SLFBoard.panel.tabNavHtml() + '</div>' +
