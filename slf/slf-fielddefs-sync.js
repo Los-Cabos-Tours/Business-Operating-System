@@ -1,37 +1,15 @@
 // ============================================================
-// SLF Field-Definitions Sync — v1.1
+// SLF Field-Definitions Sync — v1.2
 // Owner order (2026-11-17): every user must see the same client
-// profile info everywhere. Custom fields (Phone, E-Mail, DOB,
-// SSN, Address, and anything the owner adds later) were stored
+// profile info everywhere; synced every 3 seconds (driven by
+// slf-fast-sync.js heartbeat). Custom fields (Phone, E-Mail,
+// DOB, SSN, Address, and anything the owner adds later) live
 // under slf_crm.fielddefs.v1 / slf_crm.sections.v1 — keys the
-// main SLF sync module does NOT sync. So field definitions only
-// existed on the browser that created them, and every other
-// device rendered a bare profile (Notes only).
+// main SLF sync module did not sync. This module closes that.
 //
-// WHAT THIS MODULE DOES:
-//  - Pulls the two definition keys from the same backend and
-//    namespace as SLF CloudSync (user=slf-<ns>) and merges them
-//    into local storage: union by id; on conflict the REMOTE
-//    copy wins (the shared store is the source of truth).
-//  - PUSHES AT BOOT once (v1.1): the creator's device is the
-//    only place the definitions exist right now — the backend
-//    has never received them. A one-time push on every boot
-//    (guarded by a daily throttle) uploads any local
-//    definitions that are missing from the backend. After the
-//    first load on the creator's browser, every device gets
-//    them via pull.
-//  - Pushes both keys whenever they change locally (debounced),
-//    as its own small payload — the backend merges per-key, so
-//    clients/cases/history are never touched by these pushes.
-//  - Respects the SLF sync toggle (slf_crm.sync.enabled): while
-//    sync is disabled, nothing leaves the device and no remote
-//    data is applied.
-//  - Polls like the main sync (60s) so edits propagate quickly.
-//    A re-render is requested after any applied change.
-// NOTE: field-definition DELETIONS do not propagate in v1 (no
-// timestamps on definitions). Deleting a field removes it on
-// this device; recreate-on-edit conflicts are prevented by
-// remote-wins union. Owner-managed rare operation.
+// v1.2: exposes applyRemotePayload(data) so the 3-second
+// heartbeat feeds this module from its consolidated pull, and
+// pushes within 800ms of a local change.
 // ============================================================
 (function () {
   'use strict';
@@ -40,9 +18,9 @@
   var SECS_KEY = 'slf_crm.sections.v1';
   var ENABLE_KEY = 'slf_crm.sync.enabled';
   var BOOT_PUSH_AT_KEY = 'slf_crm.fielddefs.boot_push_at';
-  var BOOT_PUSH_THROTTLE_MS = 24 * 60 * 60 * 1000; // one boot-push per day max
+  var BOOT_PUSH_THROTTLE_MS = 24 * 60 * 60 * 1000;
   var POLL_MS = 60000;
-  var DEBOUNCE_MS = 2000;
+  var DEBOUNCE_MS = 800;
   var PULL_TIMEOUT_MS = 8000;
 
   var _origSet = localStorage.setItem.bind(localStorage);
@@ -101,6 +79,19 @@
     }
   }
 
+  // Heartbeat entry point: apply a whole namespace payload.
+  function applyRemotePayload(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+    if (data[DEFS_KEY] === undefined && data[SECS_KEY] === undefined) return;
+    var dArr = null, sArr = null;
+    try {
+      var d = data[DEFS_KEY], s = data[SECS_KEY];
+      dArr = (d === undefined) ? null : ((typeof d === 'string') ? JSON.parse(d) : d);
+      sArr = (s === undefined) ? null : ((typeof s === 'string') ? JSON.parse(s) : s);
+    } catch (e) { return; }
+    if (applyRemotePair(dArr, sArr)) reRender();
+  }
+
   // ---- push (small per-key payload; backend merges, never replaces) ----
   function pushNow() {
     if (!isEnabled()) return;
@@ -139,14 +130,7 @@
       if (script && script.parentNode) script.parentNode.removeChild(script);
     }
     window[cb] = function (data) {
-      try {
-        if (data && typeof data === 'object' && !Array.isArray(data)) {
-          var d = data[DEFS_KEY], s = data[SECS_KEY];
-          var dArr = (typeof d === 'string') ? JSON.parse(d) : d;
-          var sArr = (typeof s === 'string') ? JSON.parse(s) : s;
-          if (applyRemotePair(dArr, sArr)) reRender();
-        }
-      } catch (e) { /* bad payload: ignore */ }
+      try { applyRemotePayload(data); } catch (e) { /* bad payload: ignore */ }
       finish();
     };
     script = document.createElement('script');
@@ -167,9 +151,6 @@
 
   // ---- lifecycle ----
   function start() {
-    // v1.1 BOOT PUSH: the creator's device holds definitions the
-    // backend has never received. Push them up (throttled to once
-    // per day) so every other device can pull them.
     var lastPush = Number(_origGet(BOOT_PUSH_AT_KEY)) || 0;
     if (readArr(DEFS_KEY).length > 0 && Date.now() - lastPush > BOOT_PUSH_THROTTLE_MS) {
       pushNow();
@@ -184,7 +165,6 @@
   }
   function boot() {
     if (isEnabled()) start();
-    // follow the toggle if the user flips it later
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'visible' && isEnabled() && _poll === null) start();
     });
@@ -200,5 +180,5 @@
     boot();
   }
 
-  window.SLFFieldDefsSync = { push: pushNow, pull: pullOnce };
+  window.SLFFieldDefsSync = { push: pushNow, pull: pullOnce, applyRemotePayload: applyRemotePayload };
 })();
