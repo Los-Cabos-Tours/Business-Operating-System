@@ -16,18 +16,16 @@
   <!-- Cross-device login: pulls the shared user-account list from the
        configured sync backend so any account works on any device. -->
   <script src="js/cross-device-login.js"></script>
-  <!-- Boot sync: pulls ALL shared data (main BOS + Student Loans) from
-       the configured sync backend so every device shows the same data. -->
-  <script src="js/boot-sync.js"></script>
-  <!-- TWO-FACTOR AUTH (owner order 2026-11-16): after username/password,
-       every non-superadmin account must enter a fresh 6-digit PIN emailed
-       to their address on file. PIN expires after 2 minutes. Three wrong
-       attempts block the login. Superadmin signs in at any time, no PIN.
-       v2.2: the PIN box is clean — no backend URL, no paste field, no
-       internal info on screen. The backend is set by the owner through
-       Settings → CloudSync only. Dead-list refusal is silent.
-       ?v=2.2 cache-busts. -->
-  <script src="js/two-factor.js?v=2.2"></script>
+  <!-- Boot sync v2: pulls ALL shared data (main BOS + Student Loans) from
+       the configured sync backend so every device shows the same data.
+       v2 also auto-migrates browsers that still hold the DEAD old
+       backend URL to the owner's current deployment — silently, no
+       paste, no settings screen. ?v=2 cache-busts. -->
+  <script src="js/boot-sync.js?v=2"></script>
+  <!-- 2FA (REMOVED, owner order 2026-11-17): the 6-digit email PIN login
+       step is disabled. two-factor.js is now a no-op stub that only
+       cleans up 2FA leftovers from old browsers. ?v=2.3 cache-busts. -->
+  <script src="js/two-factor.js?v=2.3"></script>
   <iframe id="bos-frame" src="crm.html" title="Aetherion"></iframe>
   <script>
     (function () {
@@ -66,7 +64,7 @@
           var div = doc.createElement('div');
           var span = document.createElement('span');
           span.textContent = 'Student Loans';
-          var sub = document.createElement('div');
+          var sub = doc.createElement('div');
           sub.className = 'nav-sub';
           sub.textContent = 'Student loan CRM';
           div.appendChild(span);
