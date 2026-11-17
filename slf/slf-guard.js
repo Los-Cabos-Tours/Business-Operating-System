@@ -7,26 +7,14 @@
 // reported visibly instead of a dead page.
 // When modules change, bump VERSION (cache-busting).
 //
-// LOAD ORDER RULE (learned the hard way): modules that wrap or
-// decorate render/setTab/panel MUST load AFTER slf-board-main.js
-// (the controller). slf-forth-rows.js wraps saveProfile (defined
-// by slf-notes-patch.js) and infoPanel (slf-forth-main.js), so it
-// loads after slf-notes-patch.js.
-//
-// 3.18: fast-sync consolidation; delete superadmin-only.
-// 3.19: UI guard (no CLOUD SYNC panel, sync forced on).
-// 3.20: single-nav v1 (top bar only — REPLACED in 3.26).
-// 3.21–3.24: Forth left-panel rows, restyles, screenshot rebuild.
-// 3.25: panel v5 (no duplicated info) + inline grid on .bwrap.
-// 3.26: NAV FIX — the sidebar itself now carries the 17 BOS
-//       modules under the title (one navigation, no duplicates,
-//       no fragile top bar). The 3.20 top bar is retired. The
-//       dashboard grid is inline-styled after every render so
-//       the right column can never go blank.
+// 3.27: sidebar nav v3 — UNDOES the v2 17-module sidebar move
+//       (never requested). Restores the sidebar tabs v1 hid;
+//       hides only the two duplicated by the top bar. Nothing
+//       else changes.
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.26';
+  var VERSION = '3.27';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',
