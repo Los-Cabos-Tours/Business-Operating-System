@@ -11,9 +11,6 @@ body { margin:0; font-family:Inter,sans-serif; background:var(--navy); color:var
 aside { width:220px; background:rgba(10,22,40,0.85); border-right:1px solid var(--line); padding:24px 0; flex-shrink:0; }
 aside h1 { font-family:Cinzel,serif; color:var(--gold); font-size:15px; letter-spacing:2px; margin:0 0 4px; padding:0 20px 16px; border-bottom:1px solid var(--line); }
 aside .tag { font-size:10px; color:var(--muted); padding:10px 20px 14px; letter-spacing:1px; text-transform:uppercase; }
-nav button { display:block; width:100%; text-align:left; background:none; border:none; color:var(--muted); padding:11px 20px; font-size:13px; cursor:pointer; border-left:3px solid transparent; }
-nav button:hover { color:var(--text); background:rgba(201,168,76,0.06); }
-nav button.active { color:var(--gold); border-left-color:var(--gold); background:rgba(201,168,76,0.1); }
 main { flex:1; padding:28px 32px; overflow-x:auto; }
 h2.view-title { font-family:Cinzel,serif; color:var(--gold); font-size:19px; letter-spacing:1px; margin:0 0 20px; }
 .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:24px; }
@@ -68,13 +65,11 @@ a.back:hover { color:var(--gold); }
 <aside>
   <h1>SLF CRM</h1>
   <div class="tag">Student Loan Forgiveness</div>
-  <nav id="nav">
-    <button data-view="dashboard" class="active">Dashboard</button>
-    <button data-view="clients">Clients</button>
-    <button data-view="cases">Cases &amp; Pipeline</button>
-    <button data-view="history">Activity History</button>
-    <button data-view="backup">Backup &amp; Restore</button>
-  </nav>
+  <!-- Owner order 2026-11-17: NO tab buttons in the sidebar, ever.
+       The sidebar shows ONLY the title block. The 17-module top
+       bar (slf-bos-nav-final.js) is the one navigation when no
+       client is open. While a client is open, the client panel is
+       placed here (slf-single-nav.js v7) under the title. -->
 </aside>
 <main>
   <a class="back" href="../index.html">&larr; BOS Main</a>
@@ -133,10 +128,10 @@ a.back:hover { color:var(--gold); }
      no user can disable it; the flag is forced true and re-asserted). -->
 <script src="../js/boot-sync.js"></script>
 <script src="../js/settings.js"></script>
-<!-- SLF loader (v3.30): crash-proof parse gate. While a client is open:
-     exactly ONE tab strip (the nested client tabs), the 17-module bar
-     hidden, Client Dashboard header at the very top, the full client
-     panel under "SLF CRM / Student Loan Forgiveness" in the sidebar. -->
-<script src="slf-guard.js?v=3.30"></script>
+<!-- SLF loader (v3.31): crash-proof parse gate. Sidebar carries NO
+     tab buttons ever. One tab strip while a client is open (the
+     nested client tabs); the 17-module bar is the one navigation
+     when no client is open. No element appears twice on screen. -->
+<script src="slf-guard.js?v=3.31"></script>
 </body>
 </html>
