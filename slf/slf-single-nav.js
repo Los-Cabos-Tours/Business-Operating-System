@@ -1,65 +1,57 @@
 // ============================================================
-// SLF Single Navigation — v4. Owner layout, taken literally from
-// the report: "this goes under this — SLF CRM / Student Loan
-// Forgiveness — with this at the very top — Client Dashboard…"
+// SLF Single Navigation — v5. Fixes the v4 bug.
 //
-// When a client is open:
-//   SIDEBAR:  SLF CRM / Student Loan Forgiveness
-//             [nav tabs]
-//             CLIENT PANEL — Student Loan banner, Quick Message,
-//             Workflow History, Company/Secondary Assignment,
-//             Phone, E-Mail, DOB, SSN, Address, Notes, Save
-//             Profile (the .bleft panel, moved under the title)
-//   MAIN:     Client Dashboard header (breadcrumb, name, ID,
-//             + New Case, Export, Delete, Update Status) at the
-//             VERY TOP, then the nested tabs filling the width.
-// When no client is open: sidebar back to normal, nothing moved.
+// v4 moved the client panel into the sidebar — but its cleanup
+// loop then saw "no .bleft in #view" and treated that as "board
+// closed", DELETING the panel it had just moved. The panel
+// vanished from the screen. Owner report: "you broke my system."
 //
-// That is the whole change. Nothing else is touched.
+// v5 rule (the owner's literal layout, nothing else):
+//   Board open  -> nav tabs hidden; the client panel lives in
+//                  the sidebar directly under "SLF CRM / Student
+//                  Loan Forgiveness"; main = Client Dashboard
+//                  header at the very top, tabs full width below.
+//   Board closed-> sidebar back to normal, panel removed,
+//                  width restored. Nothing else is touched.
+// The panel is NEVER removed while the board is open — the only
+// removal trigger is the board actually being closed.
 // ============================================================
 (function () {
   'use strict';
 
-  var DUPLICATED = ['dashboard', 'clients'];
   var PANEL_ID = 'slf-side-panel';
+
+  function boardOpen() {
+    try { return !!(window.SLFBoard && SLFBoard.state().clientId); } catch (e) { return false; }
+  }
 
   function apply() {
     var aside = document.querySelector('aside');
     if (!aside) return;
-
-    // Nav tabs: visible; only the two the top bar already shows stay hidden.
     var nav = document.getElementById('nav');
-    if (nav) {
-      nav.style.display = '';
-      var btns = nav.querySelectorAll('button');
-      for (var i = 0; i < btns.length; i++) {
-        var v = btns[i].getAttribute('data-view');
-        var dup = v && DUPLICATED.indexOf(v) !== -1;
-        btns[i].style.display = dup ? 'none' : '';
-      }
-    }
-
     var livePanel = document.querySelector('#view .bleft');
-    if (livePanel) {
-      // Board open: the panel belongs in the sidebar, under the
-      // title. Move it there.
-      var existing = document.getElementById(PANEL_ID);
-      if (existing && existing !== livePanel && existing.parentNode) {
-        existing.parentNode.removeChild(existing);
+
+    if (boardOpen()) {
+      if (nav) nav.style.display = 'none';
+      // A fresh board render put the panel back in #view — move
+      // the fresh copy up, drop the stale copy. This is a
+      // REPLACE, never a delete-while-open.
+      if (livePanel) {
+        var old = document.getElementById(PANEL_ID);
+        if (old && old !== livePanel && old.parentNode) old.parentNode.removeChild(old);
+        livePanel.id = PANEL_ID;
+        aside.appendChild(livePanel);
       }
-      livePanel.id = PANEL_ID;
-      aside.appendChild(livePanel);
       aside.style.width = '330px';
-      // The main area now carries header at top + tabs full width.
       var wrap = document.querySelector('#view .bwrap');
       if (wrap) {
         wrap.style.display = 'grid';
         wrap.style.gridTemplateColumns = '1fr';
       }
     } else {
-      // Board closed: remove the moved panel, restore the sidebar.
-      var old = document.getElementById(PANEL_ID);
-      if (old && old.parentNode) old.parentNode.removeChild(old);
+      if (nav) nav.style.display = '';
+      var stale = document.getElementById(PANEL_ID);
+      if (stale && stale.parentNode) stale.parentNode.removeChild(stale);
       aside.style.width = '';
     }
   }
