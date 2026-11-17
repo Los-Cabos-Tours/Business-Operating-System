@@ -133,10 +133,9 @@ a.back:hover { color:var(--gold); }
      no user can disable it; the flag is forced true and re-asserted). -->
 <script src="../js/boot-sync.js"></script>
 <script src="../js/settings.js"></script>
-<!-- SLF loader (v3.26): crash-proof parse gate + the 17 BOS modules in
-     the sidebar (one navigation — no duplicates, no fragile top bar) +
-     the de-duplicated client panel. The dashboard two-column grid is
-     inline-styled so the right column can never go blank. -->
-<script src="slf-guard.js?v=3.26"></script>
+<!-- SLF loader (v3.27): crash-proof parse gate. Sidebar tabs restored
+     (v1 wrongly hid them); only Dashboard and Clients stay hidden
+     because the top module bar already shows them. -->
+<script src="slf-guard.js?v=3.27"></script>
 </body>
 </html>
