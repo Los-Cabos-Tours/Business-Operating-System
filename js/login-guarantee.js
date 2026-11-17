@@ -1,125 +1,123 @@
 // ============================================================
-// BOS Login Guarantee — v1
-// Owner order (2026-11-17): Oliver (oliver1) must be able to
-// sign in from ANY device with his credentials.
+// BOS Login Guarantee — v2: ALL accounts work on ANY device
+// Owner order (2026-11-17): every account the owner creates
+// (superadmin, oliver1, and all future team accounts) must be
+// able to sign in from any device, anywhere in the world.
 //
-// ROOT CAUSE (verified in crm.html):
-//  1. A fresh browser seeds ONLY the six shipped demo accounts.
-//     oliver1 is not among them, so before any sync pull the
-//     local user list does not contain him -> every login fails
-//     with "Invalid username or password".
-//  2. The CloudSync _push() sends the WHOLE local aetherion_users
-//     array to the backend. A fresh device with only demo users
-//     can overwrite the shared store, wiping oliver1 from every
-//     other device after their next pull.
+// THREE ROOT CAUSES THIS CLOSES (verified in crm.html):
+//  1. FRESH DEVICES SEED DEMO ACCOUNTS ONLY. crm.html's
+//     initializeDB() re-seeds 6 shipped demo accounts on every
+//     load. The owner deleted them, and real accounts
+//     (oliver1, team) are NOT in that list, so login fails on
+//     any browser that has not synced yet.
+//  2. ID COLLISION KILLS REAL ACCOUNTS IN MERGES. The owner
+//     deleted demo 'ana' (id U-002) — that id went into the
+//     users tombstone list — and 'oliver1' was then created
+//     with the SAME id U-002. Every sync merge on any device
+//     excludes tombstoned ids, so oliver1 is silently dropped
+//     from the merged user list everywhere except the owner's
+//     own browser. A stale tombstone whose id now belongs to a
+//     LIVE account must be removed.
+//  3. NO RETRY. handleLogin() validates against localStorage
+//     only; if the shared list has not been pulled yet, a
+//     correct login is rejected with no second chance.
 //
-// WHAT THIS MODULE DOES (runs before login, never touches
-// crm.html's own code):
-//  1. ENSURES oliver1 exists locally with the owner-verified
-//     credentials (U-002, TiaJuana2027, admin, active, credV 2).
-//     Last-write-wins by updatedAt is respected: a NEWER local
-//     copy of the account (password changed on this device) is
-//     never downgraded by this module.
-//  2. PULLS the shared user list from the configured backend
-//     (same JSONP GET path as cross-device-login) and merges it
-//     last-write-wins by updatedAt. Remote accounts that are
-//     newer overwrite older local copies, INCLUDING oliver1 —
-//     so a password change made on one device reaches all.
-//  3. RETRY: hooks the login form submit. If a sign-in fails
-//     with "Invalid username or password", it force-refreshes
-//     the shared user list once and lets the user retry —
-//     no dead ends, no stuck browsers.
+// WHAT THIS MODULE DOES (runs in the shell BEFORE crm.html):
+//  A. BLOCKS DEMO SEEDING on every device (marks all six demo
+//     ids as deleted-defaults before crm.html boots). Deleted
+//     demo accounts can never resurrect, and the printed demo
+//     passwords in the public repo can no longer log in.
+//  B. PULLS the shared user list from the configured backend
+//     (read-only JSONP, same transport as cross-device-login)
+//     and merges last-write-wins by updatedAt. Runs at boot
+//     (always if the local list is empty; hourly otherwise).
+//     Password changes made on any device propagate to all.
+//  C. CLEANS STALE USER TOMBSTONES: a tombstone whose id is now
+//     owned by a live account is removed, so sync merges stop
+//     deleting real accounts (fixes the oliver1/U-002 case for
+//     every device, permanently, once the cleaned tombstone
+//     list syncs up).
+//  D. RETRY: wraps the CRM's handleLogin. If a sign-in fails,
+//     it force-pulls the shared list and retries once with the
+//     fresh data. No dead ends.
 // ============================================================
 (function () {
   'use strict';
 
   var USERS_KEY = 'aetherion_users';
+  var TOMB_KEY = 'aetherion_tombstones';
+  var DELETED_DEFAULTS_KEY = 'aetherion_deleted_defaults';
   var GUARANTEE_AT_KEY = 'aetherion_login_guarantee_at';
   var PULL_TIMEOUT_MS = 8000;
+  var THROTTLE_MS = 60 * 60 * 1000; // hourly refresh once list is populated
 
-  // Owner-verified account (from the live backend store, 2026-11-17).
-  var OLIVER = {
-    id: 'U-002',
-    name: 'Oliver',
-    username: 'oliver1',
-    password: 'TiaJuana2027',
-    email: 'hugoobednajerasolis81@gmail.com',
-    phone: '',
-    jobTitle: 'Co Founder',
-    role: 'admin',
-    active: true,
-    permissions: {
-      dashboard: { view: true },
-      guests: { view: true, create: true, edit: true, delete: false, export: true, whatsapp: true },
-      webleads: { view: true },
-      bookings: { view: true, create: true, edit: true, delete: false, export: true, whatsapp: true },
-      concierge: { view: true, create: true, edit: true, delete: false },
-      operators: { view: true, create: false, edit: false, delete: false, whatsapp: true },
-      history: { view: true, export: true },
-      settings: { view: true, edit: true },
-      users: { view: false, create: false, edit: false, delete: false },
-      assistant: { view: true }
-    },
-    createdAt: '2026-11-16',
-    credV: 2,
-    updatedAt: 1794835140109 // matches the backend copy
-  };
+  // The six shipped demo account ids (crm.html DEFAULT_USERS).
+  var DEMO_USER_IDS = ['U-001', 'U-002', 'U-003', 'U-004', 'U-005', 'U-006'];
 
   function getOrig(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function setOrig(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 
   function readUsers() {
     try {
-      var arr = JSON.parse(getOrig(USERS_KEY) || '[]');
-      return Array.isArray(arr) ? arr : [];
+      var a = JSON.parse(getOrig(USERS_KEY) || '[]');
+      return Array.isArray(a) ? a : [];
     } catch (e) { return []; }
   }
   function writeUsers(arr) { setOrig(USERS_KEY, JSON.stringify(arr)); }
 
+  // ---- A. block demo seeding BEFORE crm.html boots ----
+  function blockDemoSeeds() {
+    try {
+      var dd = [];
+      try { dd = JSON.parse(getOrig(DELETED_DEFAULTS_KEY) || '[]'); } catch (e) { dd = []; }
+      if (!Array.isArray(dd)) dd = [];
+      var changed = false;
+      DEMO_USER_IDS.forEach(function (id) {
+        if (dd.indexOf(id) === -1) { dd.push(id); changed = true; }
+      });
+      if (changed) setOrig(DELETED_DEFAULTS_KEY, JSON.stringify(dd));
+    } catch (e) { /* never fatal */ }
+  }
+
+  // ---- merge: last-write-wins by updatedAt, keep every live account ----
   function mergeUsers(localArr, remoteArr) {
     var map = {};
     localArr.forEach(function (u) {
       if (u && u.username) map[u.username.toLowerCase()] = u;
     });
-    remoteArr.forEach(function (u) {
+    (remoteArr || []).forEach(function (u) {
       if (!u || !u.username) return;
-      var key = u.username.toLowerCase();
-      var ex = map[key];
-      if (!ex || (Number(u.updatedAt) || 0) > (Number(ex.updatedAt) || 0)) {
-        map[key] = u;
-      }
+      var k = u.username.toLowerCase();
+      var ex = map[k];
+      if (!ex || (Number(u.updatedAt) || 0) > (Number(ex.updatedAt) || 0)) map[k] = u;
     });
     return Object.keys(map).map(function (k) { return map[k]; });
   }
 
-  // 1. Ensure oliver1 exists locally (never downgrade a newer local copy).
-  function ensureOliver() {
+  // ---- C. remove tombstones whose id is owned by a LIVE account ----
+  function cleanStaleUserTombstones(remoteUsers) {
     try {
-      var users = readUsers();
-      var idx = -1;
-      for (var i = 0; i < users.length; i++) {
-        if (users[i] && String(users[i].username || '').toLowerCase() === 'oliver1') { idx = i; break; }
+      var tombs = JSON.parse(getOrig(TOMB_KEY) || '{}');
+      if (!tombs || !Array.isArray(tombs.users) || tombs.users.length === 0) return;
+      var live = {};
+      readUsers().forEach(function (u) { if (u && u.id) live[String(u.id)] = true; });
+      (remoteUsers || []).forEach(function (u) { if (u && u.id) live[String(u.id)] = true; });
+      var kept = tombs.users.filter(function (id) { return !live[String(id)]; });
+      if (kept.length !== tombs.users.length) {
+        tombs.users = kept;
+        setOrig(TOMB_KEY, JSON.stringify(tombs));
       }
-      if (idx === -1) {
-        users.push(OLIVER);
-        writeUsers(users);
-      } else {
-        var local = users[idx];
-        if ((Number(local.updatedAt) || 0) < OLIVER.updatedAt) {
-          users[idx] = OLIVER;
-          writeUsers(users);
-        }
-      }
-    } catch (e) { /* must never break boot */ }
+    } catch (e) { /* never fatal */ }
   }
 
-  // 2. Pull the shared user list from the backend (read-only, JSONP).
+  // ---- B. pull the shared user list (read-only JSONP) ----
   function pullRemoteUsers(onDone) {
+    var out = { users: null };
     var url = (getOrig('aetherion_sync_url') || '').trim();
-    if (!url) { if (onDone) onDone(); return; }
+    if (!url) { if (onDone) onDone(out); return; }
     var ns = (getOrig('aetherion_sync_namespace') || 'default').trim() || 'default';
     var sep = url.indexOf('?') >= 0 ? '&' : '?';
-    var cb = 'boslg_cb_' + Date.now();
+    var cb = 'boslg_cb_' + Date.now() + '_' + Math.floor(Math.random() * 9999);
     var script = null;
     var settled = false;
     function finish() {
@@ -127,7 +125,7 @@
       settled = true;
       try { delete window[cb]; } catch (e) { window[cb] = undefined; }
       if (script && script.parentNode) script.parentNode.removeChild(script);
-      if (onDone) onDone();
+      if (onDone) onDone(out);
     }
     window[cb] = function (data) {
       try {
@@ -141,6 +139,7 @@
             if (u && typeof u === 'object' && typeof u.username === 'string' && u.username &&
                 typeof u.password === 'string' && u.password) valid.push(u);
           }
+          out.users = valid;
           if (valid.length > 0) writeUsers(mergeUsers(readUsers(), valid));
         }
       } catch (e) { /* bad payload: ignore */ }
@@ -153,16 +152,54 @@
     setTimeout(finish, PULL_TIMEOUT_MS);
   }
 
+  // ---- D. retry failed logins with a fresh pull ----
+  function hookLogin() {
+    var frame = document.getElementById('bos-frame');
+    if (!frame) return;
+    frame.addEventListener('load', function () {
+      var attempts = 0;
+      var timer = setInterval(function () {
+        var w = null;
+        try { w = frame.contentWindow; } catch (e) { w = null; }
+        if (w && typeof w.handleLogin === 'function' && !w.__bos_lg_v2) {
+          w.__bos_lg_v2 = true;
+          clearInterval(timer);
+          var orig = w.handleLogin;
+          w.handleLogin = function () {
+            orig();
+            var failed = false;
+            try {
+              var errEl = w.document.getElementById('login-error');
+              failed = !!(errEl && errEl.classList && errEl.classList.contains('visible'));
+            } catch (e) {}
+            if (!failed) return;
+            // Login failed: pull the freshest shared list, then retry once.
+            pullRemoteUsers(function (res) {
+              cleanStaleUserTombstones(res && res.users);
+              try {
+                var errEl2 = w.document.getElementById('login-error');
+                if (errEl2 && errEl2.classList) errEl2.classList.remove('visible');
+              } catch (e) {}
+              orig();
+            });
+          };
+        }
+        if (++attempts > 20) clearInterval(timer);
+      }, 500);
+    });
+  }
+
   function boot() {
-    ensureOliver();
-    // Fresh pull of the shared list (re-pull at most once per hour).
+    blockDemoSeeds(); // before crm.html boots: no demo accounts anywhere
     var last = Number(getOrig(GUARANTEE_AT_KEY)) || 0;
-    if (Date.now() - last > 3600000) {
-      pullRemoteUsers(function () {
-        ensureOliver(); // merge can never drop oliver1: re-assert after pull
+    var needPull = readUsers().length === 0 || (Date.now() - last) > THROTTLE_MS;
+    if (needPull) {
+      pullRemoteUsers(function (res) {
+        cleanStaleUserTombstones(res && res.users);
         setOrig(GUARANTEE_AT_KEY, String(Date.now()));
       });
     }
+    hookLogin();
   }
 
   if (document.readyState === 'loading') {
