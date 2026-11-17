@@ -22,15 +22,16 @@
 // 3.20: slf-single-nav.js — ONE navigation: the Forth-style top
 //       module bar. The duplicate left sidebar tab list is
 //       hidden — no tab appears twice (owner order 2026-11-17).
-// 3.21: slf-forth-rows.js — the 11 Forth left-panel features.
-// 3.22: restyled slf-forth-rows.js to match the Forth screenshot:
-//       NO on-screen numbers (those were doc annotations, not UI),
-//       clean muted label / right-aligned value rows, quiet gold
-//       links, compact inline dropdowns.
+// 3.21: slf-forth-rows.js — the Forth left-panel features.
+// 3.22: restyled rows (first pass).
+// 3.23: rebuilt rows (v3) mirroring the Forth screenshot exactly
+//       — uniform quiet label/value rows, NO numbers, NO gold
+//       buttons, plain gold links, inline dropdowns only where
+//       Forth has them. Reuses the board's own .frow/.flab CSS.
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.22';
+  var VERSION = '3.23';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',
