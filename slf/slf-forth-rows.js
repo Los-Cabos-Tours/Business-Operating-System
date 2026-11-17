@@ -1,29 +1,30 @@
 // ============================================================
-// Forth left panel — v5. Owner feedback on v4 (live screenshot
-// dump 2026-11-17): "repeated information — I do not need the
-// info 2 times on the same screen." Fixed:
+// Forth left panel — v6. Owner order (2026-11-17): "where is all
+// the info that goes on the side?" The v5 de-dup pass removed
+// too much — Customer ID, Request Release and Income/Expenses
+// vanished from the panel. v6 restores the full owner spec
+// (the numbered left-panel list), keeping ONLY the true junk
+// out:
 //
-//   REMOVED stage strip      -> header already shows stage via
-//                               Update Status (PR #34)
-//   REMOVED Customer ID row  -> header already shows CL-xxxx chip
-//   HOLD NOTICE shows ONLY   -> v4 showed it for every
-//      when the client has      superadmin, even clients not on
-//      a hold flag set (c.hold  hold; wrong and scary
-//      or c.onHold true)
-//   INCOME / EXPENSES hidden  -> a $0.00/$0.00/$0.00 block is
-//      when there is no budget  clutter; Budget Analysis stays
-//      data (income and        reachable from the top nav bar
-//      expenses both zero)
+//   RESTORED  Customer ID row          (owner spec, feature 6)
+//   RESTORED  Request Release          (owner spec, feature 5 —
+//             role-gated: superadmin only; real hold notice
+//             when a hold flag exists, plain row otherwise)
+//   RESTORED  Income / Expenses        (owner spec, feature 11 —
+//             always shows the Budget Analysis link; money
+//             values only when budget data exists)
 //
-// Panel keeps only what is NOT shown elsewhere:
-//   File Type banner (the dropdown)
-//   Quick Message + Workflow History links
-//   Company Assignment + Change Secondary Assignment dropdowns
-//   (real hold notice + Request Release when a hold exists)
-//   Income/Expenses + Client Snapshot only when data exists
+//   STILL OUT  stage strip              (header Update Status
+//                                      already shows it, #34)
+//   STILL OUT  fake hold banner         (only real hold flags)
+//   STILL OUT  $0.00 / $0.00 / $0.00    (values render only
+//                                      when data exists)
 //
-// The tabs area sits to the RIGHT of this panel (slf-board-main
-// renders .bleft panel + .bright tabs in a 320px/1fr grid).
+// Panel = File Type banner, Quick Message, Workflow History,
+// Request Release (role-gated), Customer ID, Company Assignment,
+// Change Secondary Assignment, profile fields, Income/Expenses
+// -> Budget Analysis, Notes, Save Profile. Nothing duplicated
+// from the header.
 // ============================================================
 'use strict';
 (function () {
@@ -53,7 +54,8 @@
     '.fp-tot{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0;}' +
     '.fp-tot .k{color:var(--muted);}' +
     '.fp-net{color:var(--gold);font-weight:700;}' +
-    '.fp-view{display:block;margin:8px 0 0 0;color:var(--gold);font-size:12px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;}';
+    '.fp-view{display:block;margin:8px 0 0 0;color:var(--gold);font-size:12px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;}' +
+    '.fp-rl{color:var(--gold);font-size:12px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;}';
 
   function fileTypeOptions(c) {
     var types = ['Student Loan', 'Debt Settlement', 'General'];
@@ -83,7 +85,7 @@
     return window.SLF ? SLF.cases.filter(function (k) { return k.clientId === c.id; }) : [];
   }
 
-  // ---------- top block: ONLY info the header does not show ----------
+  // ---------- top block: full owner spec, nothing duplicated ----------
   SLFBoard.panel.forthPanel = function (c) {
     var html = '<style>' + CSS + '</style>' +
       '<select id="pe-filetype" class="fp-badge">' + fileTypeOptions(c) + '</select>' +
@@ -91,10 +93,17 @@
       '<a onclick="SLFBoard.quickEmail();">Quick Message</a>' +
       '<a onclick="SLFBoard.setTab(\'history\');">Workflow History</a>' +
       '</div>';
-    // Hold notice ONLY when the client actually has a hold flag.
-    if (isSuperAdmin() && (c.hold === true || c.onHold === true)) {
-      html += '<div class="fp-note">This client is on hold by the gateway. <a onclick="SLFBoard.requestRelease();">Request Release</a></div>';
+    // Request Release — role-gated (owner spec feature 5).
+    // Real hold flag -> the hold notice. No hold -> plain row.
+    if (isSuperAdmin()) {
+      if (c.hold === true || c.onHold === true) {
+        html += '<div class="fp-note">This client is on hold by the gateway. <a onclick="SLFBoard.requestRelease();">Request Release</a></div>';
+      } else {
+        html += fpRow('Request Release', '<a class="fp-rl" onclick="SLFBoard.requestRelease();">Request release</a>');
+      }
     }
+    // Customer ID — owner spec feature 6.
+    html += fpRow('Customer ID', esc(c.id));
     html += fpRow('Company Assignment', '<select id="pe-company">' + userOptions(c.company) + '</select>');
     html += fpRow('Change Secondary Assignment', '<select id="pe-secondary">' + userOptions(c.secondary) + '</select>');
     return html;
@@ -104,15 +113,17 @@
   function tailHtml(c) {
     var h = '';
     var t = SLFBoard.budgetTotals ? SLFBoard.budgetTotals(c.id) : null;
-    // Show the money block only when there is actual budget data —
-    // never a wall of $0.00 (owner order 2026-11-17).
-    if (t && ((t.income || 0) > 0 || (t.expenses || 0) > 0)) {
-      h += '<div class="fp-sec">Income / Expenses</div>' +
-        '<div class="fp-tot"><span class="k">Income:</span><span>$' + (t.income || 0).toFixed(2) + '</span></div>' +
+    var hasMoney = t && ((t.income || 0) > 0 || (t.expenses || 0) > 0);
+    // Income / Expenses — owner spec feature 11. The section and
+    // the Budget Analysis link ALWAYS show; the money values show
+    // only when budget data exists (never a $0.00 wall).
+    h += '<div class="fp-sec">Income / Expenses</div>';
+    if (hasMoney) {
+      h += '<div class="fp-tot"><span class="k">Income:</span><span>$' + (t.income || 0).toFixed(2) + '</span></div>' +
         '<div class="fp-tot"><span class="k">Expenses:</span><span>$' + (t.expenses || 0).toFixed(2) + '</span></div>' +
-        '<div class="fp-tot"><span class="k">Net:</span><span class="fp-net">$' + (t.net || ((t.income || 0) - (t.expenses || 0))).toFixed(2) + '</span></div>' +
-        '<a class="fp-view" onclick="SLFBoard.setTab(\'budget\');">View Budget Analysis</a>';
+        '<div class="fp-tot"><span class="k">Net:</span><span class="fp-net">$' + (t.net || ((t.income || 0) - (t.expenses || 0))).toFixed(2) + '</span></div>';
     }
+    h += '<a class="fp-view" onclick="SLFBoard.setTab(\'budget\');">View Budget Analysis</a>';
     var cases = clientCases(c);
     if (cases.length) {
       var k = cases[0];
