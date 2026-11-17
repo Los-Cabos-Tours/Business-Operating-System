@@ -7,32 +7,15 @@
 // reported visibly instead of a dead page.
 // When modules change, bump VERSION (cache-busting).
 //
-// LOAD ORDER RULE (learned the hard way): modules that wrap or
-// decorate render/setTab/panel MUST load AFTER slf-board-main.js
-// (the controller). slf-forth-rows.js wraps saveProfile (defined
-// by slf-notes-patch.js) and render (slf-board-main.js), so it
-// loads after slf-notes-patch.js.
-//
-// 3.18: slf-fast-sync.js — ONE consolidated pull every 3 seconds
-//       dispatched to all sync modules; slf-delete-guard.js —
-//       deletion is SUPERADMIN-ONLY; fixes the 3.17 reversed
-//       module load order.
-// 3.19: slf-ui-guard.js — CLOUD SYNC sidebar panel removed;
-//       sync forced on forever; delete controls hidden from
-//       non-superadmin users.
-// 3.20: slf-single-nav.js — ONE navigation: the Forth-style top
-//       module bar. The duplicate left sidebar tab list is
-//       hidden — no tab appears twice (owner order 2026-11-17).
-// 3.21–3.24: Forth left-panel rows, restyles, screenshot rebuild.
-// 3.25: v5 — owner feedback: NO repeated information. Left panel
-//       de-duplicated (Customer ID, status strip, Budget Analysis
-//       link, Email/Phone rows all removed — already on screen).
-//       Income / Expenses + Client Snapshot moved to the RIGHT
-//       column (was empty), above the tabs.
+// 3.28: owner layout, literal from the report: the client panel
+//       lives in the sidebar space under "SLF CRM / Student Loan
+//       Forgiveness"; the Client Dashboard header sits at the
+//       very top of the main area; the nested tabs fill the rest.
+//       Nothing else changes.
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.25';
+  var VERSION = '3.28';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',

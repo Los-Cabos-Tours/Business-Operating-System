@@ -1,47 +1,74 @@
 // ============================================================
-// SLF Single Navigation — one nav, no duplicates
-// Owner order (2026-11-17): "I do not need the same tab 2 times
-// in the system — take away the side tabs; we already have them
-// in the main tabs." Target layout is the Forth-style horizontal
-// top module bar (already built in slf-bos-nav-final.js): 17
-// modules across the top, no duplicate left-side tabs.
+// SLF Single Navigation — v4. Owner layout, taken literally from
+// the report: "this goes under this — SLF CRM / Student Loan
+// Forgiveness — with this at the very top — Client Dashboard…"
 //
-// WHAT THIS DOES:
-//  - Hides the left sidebar's view-tab block (Dashboard, Clients,
-//    Cases & Pipeline, Activity History, Backup & Restore,
-//    Custom Fields, Signatures) on every load and after every
-//    DOM change. Those destinations all remain reachable from
-//    the TOP module bar / dashboard view, so nothing is lost —
-//    the duplicate nav surface is simply removed.
-//  - Keeps the sidebar's brand header (SLF CRM / Student Loan
-//    Forgiveness) and the '← BOS Main' back link intact.
-//  - The sidebar keeps its width so the layout does not jump.
+// When a client is open:
+//   SIDEBAR:  SLF CRM / Student Loan Forgiveness
+//             [nav tabs]
+//             CLIENT PANEL — Student Loan banner, Quick Message,
+//             Workflow History, Company/Secondary Assignment,
+//             Phone, E-Mail, DOB, SSN, Address, Notes, Save
+//             Profile (the .bleft panel, moved under the title)
+//   MAIN:     Client Dashboard header (breadcrumb, name, ID,
+//             + New Case, Export, Delete, Update Status) at the
+//             VERY TOP, then the nested tabs filling the width.
+// When no client is open: sidebar back to normal, nothing moved.
 //
-// Sidebar DOM (slf/index.html):
-//   <aside> <h1>SLF CRM</h1> <div class="tag">…</div> <nav id="nav">…</nav> </aside>
-// The <nav id="nav"> block is the duplicated tab list. This
-// module hides that nav block (and nothing else).
+// That is the whole change. Nothing else is touched.
 // ============================================================
 (function () {
   'use strict';
 
-  function hideSidebarTabs() {
+  var DUPLICATED = ['dashboard', 'clients'];
+  var PANEL_ID = 'slf-side-panel';
+
+  function apply() {
+    var aside = document.querySelector('aside');
+    if (!aside) return;
+
+    // Nav tabs: visible; only the two the top bar already shows stay hidden.
     var nav = document.getElementById('nav');
-    if (nav) nav.style.display = 'none';
-    // Modules that dynamically inject sidebar buttons (Custom
-    // Fields designer, eSign) append into #nav — already covered
-    // by hiding the container. Belt-and-braces for any stray
-    // sibling nav blocks:
-    var strays = document.querySelectorAll('aside nav, aside #nav');
-    Array.prototype.forEach.call(strays, function (n) { n.style.display = 'none'; });
+    if (nav) {
+      nav.style.display = '';
+      var btns = nav.querySelectorAll('button');
+      for (var i = 0; i < btns.length; i++) {
+        var v = btns[i].getAttribute('data-view');
+        var dup = v && DUPLICATED.indexOf(v) !== -1;
+        btns[i].style.display = dup ? 'none' : '';
+      }
+    }
+
+    var livePanel = document.querySelector('#view .bleft');
+    if (livePanel) {
+      // Board open: the panel belongs in the sidebar, under the
+      // title. Move it there.
+      var existing = document.getElementById(PANEL_ID);
+      if (existing && existing !== livePanel && existing.parentNode) {
+        existing.parentNode.removeChild(existing);
+      }
+      livePanel.id = PANEL_ID;
+      aside.appendChild(livePanel);
+      aside.style.width = '330px';
+      // The main area now carries header at top + tabs full width.
+      var wrap = document.querySelector('#view .bwrap');
+      if (wrap) {
+        wrap.style.display = 'grid';
+        wrap.style.gridTemplateColumns = '1fr';
+      }
+    } else {
+      // Board closed: remove the moved panel, restore the sidebar.
+      var old = document.getElementById(PANEL_ID);
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      aside.style.width = '';
+    }
   }
 
   function boot() {
-    hideSidebarTabs();
-    setInterval(hideSidebarTabs, 1000);
+    apply();
+    setInterval(apply, 1000);
     if (window.MutationObserver) {
-      new MutationObserver(hideSidebarTabs)
-        .observe(document.body, { childList: true, subtree: true });
+      new MutationObserver(apply).observe(document.body, { childList: true, subtree: true });
     }
   }
 
