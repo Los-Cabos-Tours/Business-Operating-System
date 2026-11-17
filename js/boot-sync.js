@@ -51,9 +51,9 @@
 
   function getUrl() { return (getOrig('aetherion_sync_url') || '').trim(); }
   function getNamespace() {
-    return (getOrig('aetherion_sign_namespace') || getOrig('aetherion_sync_namespace') || 'default').trim() || 'default';
+    return (getOrig('aetherion_sync_namespace') || 'default').trim() || 'default';
   }
-  function isFirebase(u) { return u.indexOf('' !== null && u.indexOf('firebaseio.com') !== -1); }
+  function isFirebase(u) { return u.indexOf('firebaseio.com') !== -1; }
 
   // ---- one-time migration of the dead old backend URL ----
   function migrateDeadUrl() {
@@ -65,9 +65,9 @@
         setOrig('aetherion_sync_url', NEW_URL);
         changed = true;
       }
-      // Dead-list safety: make sure the dead old URL is on the
-      // dead list and the new URL is NOT (any 2FA-style senders
-      // refuse dead-listed URLs silently).
+      // Dead-list safety: the dead old URL goes ON the dead list,
+      // and the new URL must NOT be on it (senders silently
+      // refuse dead-listed URLs).
       var list = [];
       try { list = JSON.parse(getOrig('aetherion_dead_backends') || '[]'); } catch (e) { list = []; }
       if (!Array.isArray(list)) list = [];
@@ -75,13 +75,123 @@
         list.push(DEAD_OLD_URL_ID);
         setOrig('aetherion_dead_backends', JSON.stringify(list));
       }
-      if (list.some(function (u) { return NEW_URL.indexOf(u) !== -1; })) {
-        setOrig('aetherion_dead_backends', JSON.stringify([]));
+      if (list.some(function (u) { return u && NEW_URL.indexOf(u) !== -1; })) {
+        list = list.filter(function (u) { return !(u && NEW_URL.indexOf(u) !== -1); });
+        setOrig('aetherion_dead_backends', JSON.stringify(list));
       }
-      if (changed) setOrig(PULL_STATE_KEY, '0'); // force fresh boot pull from new backend
+      if (changed) setOrig(PULL_STATE_KEY, '0'); // force a fresh boot pull from the new backend
       setOrig(MIGRATION_DONE_KEY, 'true');
     } catch (e) { /* migration must never break the boot */ }
   }
 
   // ---- safe merge of one remote key into local storage ----
-  function mergeKey(key,Namespace, remote) {
+  function mergeKey(key, remote) {
+    if (remote === undefined || remote === null) return;
+    var parsed = remote;
+    if (typeof remote === 'string') {
+      try { parsed = JSON.parse(remote); } catch (e) { return; }
+    }
+    var localRaw = getOrig(key);
+    if (localRaw === null || localRaw === undefined) {
+      // Device has nothing here: adopt remote as-is.
+      setOrig(key, typeof remote === 'string' ? remote : JSON.stringify(parsed));
+      return;
+    }
+    var local = null;
+    try { local = JSON.parse(localRaw); } catch (e) { local = null; }
+    if (local === null) { setOrig(key, typeof remote === 'string' ? remote : JSON.stringify(parsed)); return; }
+
+    // Arrays of records: merge last-write-wins by id + updatedAt.
+    if (Array.isArray(parsed) && Array.isArray(local)) {
+      var map = {};
+      local.forEach(function (r) { if (r && typeof r === 'object' && r.id) map[r.id] = r; });
+      var changed = false;
+      parsed.forEach(function (r) {
+        if (!r || typeof r !== 'object' || !r.id) return;
+        var ex = map[r.id];
+        if (!ex || (Number(r.updatedAt) || 0) > (Number(ex.updatedAt) || 0)) { map[r.id] = r; changed = true; }
+      });
+      if (changed) setOrig(key, JSON.stringify(Object.keys(map).map(function (k) { return map[k]; })));
+      return;
+    }
+
+    // Objects (settings, counters, tombstones): union-safe — keep
+    // local unless local is missing; remote fills gaps per key.
+    if (parsed && typeof parsed === 'object' && local && typeof local === 'object'
+        && !Array.isArray(parsed) && !Array.isArray(local)) {
+      var merged = {};
+      Object.keys(parsed).forEach(function (k) { merged[k] = parsed[k]; });
+      Object.keys(local).forEach(function (k) { merged[k] = local[k]; });
+      setOrig(key, JSON.stringify(merged));
+      return;
+    }
+    // Everything else: keep local (remote never clobbers).
+  }
+
+  function applyNamespace(data, keys) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+    keys.forEach(function (k) {
+      if (data[k] !== undefined) mergeKey(k, data[k]);
+    });
+  }
+
+  // ---- transport (identical to CloudSync / cross-device-login) ----
+  function pullFirebase(url, ns) {
+    return fetch(url.replace(/\/$/, '') + '/' + encodeURIComponent(ns) + '.json', { method: 'GET' })
+      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); });
+  }
+
+  function pullAppsScript(url, ns) {
+    return new Promise(function (resolve) {
+      var cb = 'bosboot_cb_' + Date.now();
+      var script = null;
+      var settled = false;
+      function finish(data) {
+        if (settled) return;
+        settled = true;
+        try { delete window[cb]; } catch (e) { window[cb] = undefined; }
+        if (script && script.parentNode) script.parentNode.removeChild(script);
+        resolve(data || null);
+      }
+      window[cb] = function (data) { finish(data); };
+      script = document.createElement('script');
+      var sep = url.indexOf('?') >= 0 ? '&' : '?';
+      script.src = url + sep + 'user=' + encodeURIComponent(ns) + '&callback=' + cb;
+      script.onerror = function () { finish(null); };
+      document.head.appendChild(script);
+      setTimeout(function () { finish(null); }, PULL_TIMEOUT_MS);
+    });
+  }
+
+  function pullNamespace(url, ns, keys) {
+    var p = isFirebase(url) ? pullFirebase(url, ns) : pullAppsScript(url, ns);
+    return p.then(function (data) { applyNamespace(data, keys); })
+      .catch(function () { /* offline: local data stays, try next boot */ });
+  }
+
+  function start() {
+    migrateDeadUrl(); // one-time: dead old backend -> current deployment
+
+    var url = getUrl();
+    if (!url) return; // no backend configured: nothing to pull, local-only mode
+
+    // Owner directive: SLF data sync is ON for every device.
+    if (getOrig(SLF_ENABLE_KEY) !== 'true') setOrig(SLF_ENABLE_KEY, 'true');
+
+    var last = Number(getOrig(PULL_STATE_KEY)) || 0;
+    if (Date.now() - last < MAX_STALE_MS) return; // pulled moments ago: skip
+
+    var ns = getNamespace();
+    pullNamespace(url, ns, BOS_KEYS).then(function () {
+      return pullNamespace(url, 'slf-' + ns, SLF_KEYS);
+    }).then(function () {
+      setOrig(PULL_STATE_KEY, String(Date.now()));
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})();
