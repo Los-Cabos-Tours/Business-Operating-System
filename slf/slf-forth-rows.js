@@ -1,29 +1,28 @@
 // ============================================================
-// Forth left-panel rows — all 11 numbered features from Forth's
-// "Managing the Client Dashboard" doc, in Forth's order. Fills
-// the empty forthPanel slot (slf-forth-panel.js v8 left it
-// empty for exactly this) — no existing module is modified.
+// Forth left-panel rows — v2, matches the Forth screenshot.
+// v1 mistake (owner feedback): it rendered the 1-11 NUMBERS from
+// Forth's documentation annotations onto the screen. Forth's
+// actual panel has NO numbers — it is clean label/value rows.
 //
-// Rows:
-//  1  Quick Message            — opens the quick email (used often)
-//  2  File Type                — dropdown, saved on Save Profile
-//  3  Workflow History         — jumps to the History nested tab
-//  4  Update Status            — NOT here: stays in the client
-//                                header (user-approved placement,
-//                                PR #34 — never duplicated)
-//  5  Request Release          — role-gated hold-release request
-//  6  Customer ID              — system identifier (CL-xxxx)
-//  7  Company Assignment       — dropdown, saved on Save Profile
-//  8  Change Secondary
-//     Assignment               — dropdown, saved on Save Profile
-//  9  Email                    — click opens Quick Message
-// 10  Phone Numbers            — click logs a call
-// 11  Income / Expenses        — live budget totals; click opens
-//                                Budget Analysis (Student Loans)
+// This version reproduces the Forth look:
+//  - plain muted label on the left, value/control on the right
+//  - no numbers, no heavy gold buttons
+//  - clickable values shown as quiet gold links (underline on
+//    hover), dropdowns inline and compact
+//  - subtle hairline separator between rows
 //
-// Persistence: fileType / company / secondary save through the
-// SAME saveProfile path (wrapped below), so they sync to every
-// device in ~3 seconds like all other client fields.
+// Rows (Forth order, no on-screen numbering):
+//   Quick Message | File Type | Workflow History | Request
+//   Release (superadmin) | Customer ID | Company Assignment |
+//   Change Secondary Assignment | Email (click = Quick
+//   Message) | Phone Numbers (click = Log Call) |
+//   Income / Expenses (click = Budget Analysis)
+//   Update Status stays in the client header (PR #34 — never
+//   duplicated here).
+//
+// Persistence unchanged from v1: fileType / company / secondary
+// save through the same saveProfile path and sync to every
+// device in ~3 seconds.
 // ============================================================
 'use strict';
 (function () {
@@ -37,7 +36,26 @@
     } catch (e) { return false; }
   }
 
-  function userTypeOptions(c) {
+  // Shared row style — Forth look: label muted left, value right.
+  var LAB = 'color:var(--muted);font-size:12px;flex:1;letter-spacing:0.2px;';
+  var VAL = 'color:var(--gold);font-size:12px;text-align:right;cursor:pointer;text-decoration:none;';
+  var SEL = 'background:rgba(10,22,40,0.6);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:4px 8px;font-size:11.5px;font-family:inherit;max-width:160px;';
+
+  function row(label, valueHtml) {
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);">' +
+      '<span style="' + LAB + '">' + label + '</span>' + valueHtml + '</div>';
+  }
+  function link(text, action, title) {
+    return '<a style="' + VAL + '" title="' + esc(title || '') + '" onclick="' + action + ' onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + esc(text) + '</a>';
+  }
+  function plain(text) {
+    return '<span style="color:var(--text);font-size:12px;text-align:right;">' + esc(text) + '</span>';
+  }
+  function select(id, optionsHtml) {
+    return '<select id="' + id + '" style="' + SEL + '">' + optionsHtml + '</select>';
+  }
+
+  function fileTypeOptions(c) {
     var types = ['Student Loan', 'Debt Settlement', 'General'];
     var cur = c.fileType || 'Student Loan';
     return types.map(function (t) {
@@ -57,34 +75,24 @@
     return out;
   }
 
-  function row(num, label, valueHtml) {
-    return '<div class="frow"><span class="fnum">' + num + '</span><span class="flab">' + label + '</span>' + valueHtml + '</div>';
-  }
-
   SLFBoard.panel.forthPanel = function (c) {
     var t = (SLFBoard.budgetTotals ? SLFBoard.budgetTotals(c.id) : { income: 0, expenses: 0, net: 0 });
-    var html =
-      '<h4>Client Information</h4>' +
-      row(1, 'Quick Message', '<button class="fbtn" onclick="SLFBoard.quickEmail()">Quick Message</button>') +
-      row(2, 'File Type', '<select id="pe-filetype">' + userTypeOptions(c) + '</select>') +
-      row(3, 'Workflow History', '<button class="fbtn" onclick="SLFBoard.setTab(\'history\')">View History</button>');
-    // Row 5 Request Release is role-gated (Forth: requires
-    // specific role permissions). Superadmin only here.
+    var html = '<h4>Client Information</h4>';
+    html += row('Quick Message', link('Compose', 'SLFBoard.quickEmail();', 'Send an email instantly'));
+    html += row('File Type', select('pe-filetype', fileTypeOptions(c)));
+    html += row('Workflow History', link('View', 'SLFBoard.setTab(\'history\');', 'Workflow history for this contact'));
     if (isSuperAdmin()) {
-      html += row(5, 'Request Release', '<button class="fbtn" onclick="SLFBoard.requestRelease()">Request Release</button>');
+      html += row('Request Release', link('Request', 'SLFBoard.requestRelease();', 'Request a hold release'));
     }
-    html +=
-      row(6, 'Customer ID', '<span style="color:var(--gold);font-weight:600;">' + esc(c.id) + '</span>') +
-      row(7, 'Company Assignment', '<select id="pe-company">' + userOptions(c.company) + '</select>') +
-      row(8, 'Change Secondary Assignment', '<select id="pe-secondary">' + userOptions(c.secondary) + '</select>') +
-      row(9, 'Email', '<a onclick="SLFBoard.quickEmail()" title="Open Quick Message">' + esc(c.email || '— none on file —') + '</a>') +
-      row(10, 'Phone Numbers', '<a onclick="SLFBoard.logCall()" title="Log a call">' + esc(c.phone || '— none on file —') + '</a>') +
-      row(11, 'Income / Expenses', '<a onclick="SLFBoard.setTab(\'budget\')" title="View Budget Analysis">$' + t.income.toFixed(2) + ' / $' + t.expenses.toFixed(2) + '</a>');
+    html += row('Customer ID', plain(c.id));
+    html += row('Company Assignment', select('pe-company', userOptions(c.company)));
+    html += row('Change Secondary Assignment', select('pe-secondary', userOptions(c.secondary)));
+    html += row('Email', c.email ? link(c.email, 'SLFBoard.quickEmail();', 'Open Quick Message') : plain('— none on file —'));
+    html += row('Phone Numbers', c.phone ? link(c.phone, 'SLFBoard.logCall();', 'Log a call') : plain('— none on file —'));
+    html += row('Income / Expenses', link('$' + t.income.toFixed(2) + ' / $' + t.expenses.toFixed(2), 'SLFBoard.setTab(\'budget\');', 'View Budget Analysis'));
     return html;
   };
 
-  // Request Release: logs the request into the shared history so
-  // every device sees it; alerts the operator.
   SLFBoard.requestRelease = function () {
     var c = SLFBoard.client();
     if (!c) return;
@@ -92,9 +100,7 @@
     alert('Release requested for ' + c.name + ' (' + c.id + '). The request is logged in History.');
   };
 
-  // Persist fileType / company / secondary through the SAME
-  // saveProfile path — wrapped, not replaced, so the notes
-  // safety patch and custom fields keep working untouched.
+  // Same save path as v1 — wrapped, not replaced.
   var rawSave = SLFBoard.saveProfile;
   if (typeof rawSave === 'function' && !rawSave.__forthRows) {
     var wrapped = function () {
