@@ -12,11 +12,12 @@
 // current deployment. No paste, no settings screen.
 //
 // v2.1 (owner order 2026-11-17): the SLF boot pull now also
-// carries the custom field definitions (slf_crm.fielddefs.v1)
-// and sections (slf_crm.sections.v1), so a fresh device shows
-// the full client profile (Phone, E-Mail, DOB, SSN, Address...)
-// from the very first open, not just after the SLF page's own
-// pull. Same merge rules: union by id, remote fills gaps.
+// carries the custom field definitions (slf_crm.fielddefs.v1),
+// sections (slf_crm.sections.v1), and the client board data
+// (slf_crm.clientboard.v1 — notes, calls, emails, docs, tasks,
+// loans, bank, cards, debts, events, sms, emarketing, servicing,
+// lenders), so a fresh device shows the full picture from the
+// very first open.
 //
 // GAPS THIS CLOSES (kept from v1):
 //  1. SLF loan-data sync is opt-in PER DEVICE. Now: enabled
@@ -50,7 +51,7 @@
   var PULL_TIMEOUT_MS = 8000;
   var MAX_STALE_MS = 1000 * 60 * 5; // boot-pull at most every 5 min
 
-  var SLF_KEYS = ['slf_crm.clients.v1', 'slf_crm.cases.v1', 'slf_crm.history.v1', 'slf_crm.counter.v1', 'slf_crm.tombstones.v1', 'slf_crm.fielddefs.v1', 'slf_crm.sections.v1'];
+  var SLF_KEYS = ['slf_crm.clients.v1', 'slf_crm.cases.v1', 'slf_crm.history.v1', 'slf_crm.counter.v1', 'slf_crm.tombstones.v1', 'slf_crm.fielddefs.v1', 'slf_crm.sections.v1', 'slf_crm.clientboard.v1'];
   var BOS_KEYS = ['aetherion_guests', 'aetherion_bookings', 'aetherion_tasks', 'aetherion_operators', 'aetherion_resorts', 'aetherion_settings', 'aetherion_users', 'aetherion_webleads', 'aetherion_activitylog', 'aetherion_tombstones'];
 
   function getOrig(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -122,13 +123,38 @@
       return;
     }
 
-    // Objects (settings, counters, tombstones): union-safe — keep
-    // local unless local is missing; remote fills gaps per key.
+    // Objects: union-safe — keep local unless local is missing;
+    // remote fills gaps per key. For the client board this unions
+    // client entries so records from other devices are adopted.
     if (parsed && typeof parsed === 'object' && local && typeof local === 'object'
         && !Array.isArray(parsed) && !Array.isArray(local)) {
       var merged = {};
-      Object.keys(parsed).forEach(function (k) { merged[k] = parsed[k]; });
-      Object.keys(local).forEach(function (k) { merged[k] = local[k]; });
+      // for the board key, deep-merge arrays per tab by record id
+      if (key === 'slf_crm.clientboard.v1') {
+        Object.keys(local).forEach(function (k) { merged[k] = local[k]; });
+        Object.keys(parsed).forEach(function (cid) {
+          if (!merged[cid]) { merged[cid] = parsed[cid]; return; }
+          var lt = merged[cid] || {}, rt = parsed[cid] || {};
+          Object.keys(rt).forEach(function (tab) {
+            var rArr = rt[tab];
+            if (!Array.isArray(rArr)) return;
+            var lArr = Array.isArray(lt[tab]) ? lt[tab] : [];
+            var map = {};
+            lArr.forEach(function (r) { if (r && r.id) map[r.id] = r; });
+            rArr.forEach(function (r) {
+              if (!r || !r.id) return;
+              var ex = map[r.id];
+              var rTs = Date.parse(r.ts) || 0, lTs = ex ? (Date.parse(ex.ts) || 0) : 0;
+              if (!ex || rTs > lTs) map[r.id] = r;
+            });
+            lt[tab] = Object.keys(map).map(function (k) { return map[k]; });
+          });
+          merged[cid] = lt;
+        });
+      } else {
+        Object.keys(parsed).forEach(function (k) { merged[k] = parsed[k]; });
+        Object.keys(local).forEach(function (k) { if (merged[k] === undefined) merged[k] = local[k]; });
+      }
       setOrig(key, JSON.stringify(merged));
       return;
     }
@@ -179,7 +205,8 @@
   function start() {
     migrateDeadUrl(); // one-time: dead old backend -> current deployment
 
-    var url = getUrl();
+    var url = getOrig('aetherion_sync_url') || '';
+    url = url.trim();
     if (!url) return; // no backend configured: nothing to pull, local-only mode
 
     // Owner directive: SLF data sync is ON for every device.
