@@ -68,7 +68,8 @@ a.back:hover { color:var(--gold); }
   <!-- Owner order 2026-11-17: NO tab buttons in the sidebar, ever.
        The 17-module top bar is the one navigation when no client
        is open. While a client is open, the client panel is placed
-       here (slf-single-nav.js) under the title. -->
+       here under the title — immediately at render time
+       (slf-single-nav.js v8). -->
 </aside>
 <main>
   <a class="back" href="../index.html">&larr; BOS Main</a>
@@ -127,8 +128,9 @@ a.back:hover { color:var(--gold); }
      no user can disable it; the flag is forced true and re-asserted). -->
 <script src="../js/boot-sync.js"></script>
 <script src="../js/settings.js"></script>
-<!-- SLF loader (v3.33): crash-proof parse gate. The lead's name renders
-     BIG at the very top of the Client Dashboard (Forth spec). -->
-<script src="slf-guard.js?v=3.33"></script>
+<!-- SLF loader (v3.34): crash-proof parse gate. The client panel moves
+     into the sidebar at render time — no race, no panel left in the
+     main area. -->
+<script src="slf-guard.js?v=3.34"></script>
 </body>
 </html>
