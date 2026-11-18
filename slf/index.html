@@ -66,11 +66,11 @@ a.back:hover { color:var(--gold); }
   <h1>SLF CRM</h1>
   <div class="tag">Student Loan Forgiveness</div>
   <!-- Owner order 2026-11-17: NO tab buttons in the sidebar, ever.
-       Sidebar = title block, and while a client is open the
-       Client Dashboard heading + the one client panel
-       (slf-single-nav.js v12). The TOP 17-module bar is never
-       hidden, and clicked tabs now survive the 3-second sync
-       re-render (slf-bos-nav-final.js v2, loader 3.39). -->
+       Sidebar = title block, then (while a client is open, placed
+       by slf-single-nav.js v13.1): Client Dashboard heading,
+       breadcrumb (Main CRM / Contacts / name), the big lead name
+       row with the CL-ID chip, and the ONE client panel.
+       The TOP 17-module bar is never hidden. -->
 </aside>
 <main>
   <a class="back" href="../index.html">&larr; BOS Main</a>
@@ -129,9 +129,11 @@ a.back:hover { color:var(--gold); }
      no user can disable it; the flag is forced true and re-asserted). -->
 <script src="../js/boot-sync.js"></script>
 <script src="../js/settings.js"></script>
-<!-- SLF loader (v3.39): crash-proof parse gate. Clicked top-tab module
-     workspaces survive the 3-second sync re-render; top bar never
-     hidden; heading + one panel in sidebar while a client is open. -->
+<!-- SLF loader (v3.39): crash-proof parse gate. Single-nav v13.1 moves
+     the Client Dashboard header block — breadcrumb, big lead name row,
+     CL-ID chip — into the sidebar above the client panel. Buttons,
+     Update Status, and New Lead stay in main. Top 17-module bar is
+     never hidden. -->
 <script src="slf-guard.js?v=3.39"></script>
 </body>
 </html>
