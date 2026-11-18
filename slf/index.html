@@ -11,6 +11,9 @@ body { margin:0; font-family:Inter,sans-serif; background:var(--navy); color:var
 aside { width:220px; background:rgba(10,22,40,0.85); border-right:1px solid var(--line); padding:24px 0; flex-shrink:0; }
 aside h1 { font-family:Cinzel,serif; color:var(--gold); font-size:15px; letter-spacing:2px; margin:0 0 4px; padding:0 20px 16px; border-bottom:1px solid var(--line); }
 aside .tag { font-size:10px; color:var(--muted); padding:10px 20px 14px; letter-spacing:1px; text-transform:uppercase; }
+nav button { display:block; width:100%; text-align:left; background:none; border:none; color:var(--muted); padding:11px 20px; font-size:13px; cursor:pointer; border-left:3px solid transparent; }
+nav button:hover { color:var(--text); background:rgba(201,168,76,0.06); }
+nav button.active { color:var(--gold); border-left-color:var(--gold); background:rgba(201,168,76,0.1); }
 main { flex:1; padding:28px 32px; overflow-x:auto; }
 h2.view-title { font-family:Cinzel,serif; color:var(--gold); font-size:19px; letter-spacing:1px; margin:0 0 20px; }
 .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:24px; }
@@ -65,12 +68,18 @@ a.back:hover { color:var(--gold); }
 <aside>
   <h1>SLF CRM</h1>
   <div class="tag">Student Loan Forgiveness</div>
-  <!-- Owner order 2026-11-17: NO tab buttons in the sidebar, ever.
-       The 17-module top bar is the one navigation when no client
-       is open. While a client is open, the client panel is placed
-       here under the title — immediately at render time, and
-       exactly ONE panel (slf-single-nav.js v9 removes the old
-       copy at every render; panels never stack). -->
+  <!-- Owner order 2026-11-18: the sidebar tabs stay, exactly as
+       they were. They are NEVER hidden or removed again. While a
+       client is open, the Client Dashboard heading and the client
+       panel are placed under these tabs (slf-single-nav.js v10);
+       the main area keeps the nested client tabs. -->
+  <nav id="nav">
+    <button data-view="dashboard" class="active">Dashboard</button>
+    <button data-view="clients">Clients</button>
+    <button data-view="cases">Cases &amp; Pipeline</button>
+    <button data-view="history">Activity History</button>
+    <button data-view="backup">Backup &amp; Restore</button>
+  </nav>
 </aside>
 <main>
   <a class="back" href="../index.html">&larr; BOS Main</a>
@@ -129,10 +138,10 @@ a.back:hover { color:var(--gold); }
      no user can disable it; the flag is forced true and re-asserted). -->
 <script src="../js/boot-sync.js"></script>
 <script src="../js/settings.js"></script>
-<!-- SLF loader (v3.35): crash-proof parse gate. The client panel moves
-     into the sidebar at render time and there is EXACTLY ONE panel —
-     the previous copy is removed on every render, so panels never
-     stack. -->
-<script src="slf-guard.js?v=3.35"></script>
+<!-- SLF loader (v3.36): crash-proof parse gate. Sidebar tabs stay,
+     always. While a client is open, the Client Dashboard heading and
+     the one client panel live in the sidebar; the main area keeps the
+     nested client tabs. -->
+<script src="slf-guard.js?v=3.36"></script>
 </body>
 </html>
