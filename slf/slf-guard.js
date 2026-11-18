@@ -7,14 +7,15 @@
 // reported visibly instead of a dead page.
 // When modules change, bump VERSION (cache-busting).
 //
-// 3.34: single-nav v8 — the client panel is placed in the
-//       sidebar IMMEDIATELY on every board render (render
-//       hook). The 1s polling loop that could lose the race
-//       and leave the panel in the main area is backup only.
+// 3.35: single-nav v9 — the sidebar holds EXACTLY ONE client
+//       panel. Every render removes the previous copy before
+//       moving in the fresh one (v8 dropped that removal and
+//       panels stacked: 7 re-renders = 7 panels on the live
+//       screen). One panel, every render, forever.
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.34';
+  var VERSION = '3.35';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',

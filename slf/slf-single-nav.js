@@ -1,25 +1,22 @@
 // ============================================================
-// SLF Single Navigation — v8. Owner order (2026-11-17):
-//   "why did you move the client's information from the sidebar
-//    where I asked you to put it — do not move anything else."
+// SLF Single Navigation — v9. Owner report (2026-11-18, live
+// screen): the client panel appears SEVEN TIMES in the sidebar.
 //
-// v7 relied on a 1-second polling loop to carry the panel from
-// #view into the sidebar. If the board rendered (or another
-// module re-rendered it) right after a poll, the panel sat in
-// the main area until the next tick — or visibly stayed there.
-// v8 enforces the placement AT RENDER TIME: SLFBoard.render is
-// wrapped so the panel is moved into the sidebar the instant
-// the board paints. The interval/MutationObserver stay only as
-// backup. Placement is now immediate, every render, guaranteed.
+// Root cause: v8 moved the freshly rendered panel into the
+// sidebar but DROPPED v7's "remove the old copy" line. The
+// board re-renders on every live-history tick, and each render
+// creates a fresh panel; v8 appended each one while the old
+// copies stayed. Seven re-renders = seven stacked panels.
 //
-// Rules unchanged from v7:
-//   - Sidebar shows ONLY: SLF CRM / Student Loan Forgiveness
-//     (+ the client panel while a client is open). No tabs, ever.
-//   - While a client is open: module bar hidden, ONE tab strip
-//     (the nested client tabs under the Client Dashboard header
-//     at the very top of the main area).
-//   - The panel is NEVER deleted while a client is open; the
-//     only removal trigger is the board actually closing.
+// v9: every pass removes every existing sidebar copy EXCEPT the
+// incoming one, then moves the incoming panel in. There is
+// exactly ONE panel, on every render, forever. All other rules
+// unchanged from v7/v8:
+//   - Sidebar: SLF CRM / Student Loan Forgiveness + the ONE
+//     client panel while a client is open. No tab buttons, ever.
+//   - Client open: module bar hidden, ONE tab strip (nested
+//     client tabs), Client Dashboard header at the very top.
+//   - No client open: module bar is the one navigation.
 // ============================================================
 (function () {
   'use strict';
@@ -36,7 +33,6 @@
   }
 
   function hideSidebarTabs() {
-    // Owner order: the sidebar NEVER shows tab buttons again.
     var nav = document.getElementById('nav');
     if (nav) nav.style.display = 'none';
     var aside = document.querySelector('aside');
@@ -48,21 +44,35 @@
     }
   }
 
+  // Remove every sidebar panel copy except `keep`. Duplicate IDs
+  // (from the v8 stacking bug) are all purged.
+  function purgeSidebarCopies(aside, keep) {
+    var kids = aside.children;
+    for (var i = kids.length - 1; i >= 0; i--) {
+      var el = kids[i];
+      if (el !== keep && (el.id === PANEL_ID || el.className === 'bleft')) {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }
+    }
+  }
+
   function apply() {
     var aside = document.querySelector('aside');
     if (!aside) return;
     hideSidebarTabs();
 
     if (boardOpen()) {
-      setModuleBar(false); // one tab strip: the nested client tabs
-      // Find the live panel wherever it is: freshly rendered in
-      // #view (.bleft), or previously moved but dragged back.
-      var livePanel = document.querySelector('#view .bleft') || document.getElementById(PANEL_ID);
-      if (livePanel && livePanel.parentNode !== aside) {
-        livePanel.id = PANEL_ID;
-        aside.appendChild(livePanel);
-      } else if (livePanel) {
-        livePanel.id = PANEL_ID;
+      setModuleBar(false);
+      // The freshly rendered panel from this pass (in #view), or
+      // the one already living in the sidebar.
+      var incoming = document.querySelector('#view .bleft');
+      var existing = document.getElementById(PANEL_ID);
+      // ONE panel rule: remove every copy except the incoming.
+      purgeSidebarCopies(aside, incoming || existing);
+      var live = incoming || existing;
+      if (live) {
+        live.id = PANEL_ID;
+        if (live.parentNode !== aside) aside.appendChild(live);
       }
       aside.style.width = '330px';
       var wrap = document.querySelector('#view .bwrap');
@@ -71,16 +81,13 @@
         wrap.style.gridTemplateColumns = '1fr';
       }
     } else {
-      setModuleBar(true); // the one navigation while no client is open
-      var stale = document.getElementById(PANEL_ID);
-      if (stale && stale.parentNode) stale.parentNode.removeChild(stale);
+      setModuleBar(true);
+      purgeSidebarCopies(aside, null); // board closed: no panel at all
       aside.style.width = '';
     }
   }
 
   function boot() {
-    // 1) Enforce placement immediately after EVERY board render —
-    //    this is the fix: no race, no panel left in the main area.
     if (window.SLFBoard && typeof SLFBoard.render === 'function' && !SLFBoard.render.__singleNavHook) {
       var rawRender = SLFBoard.render;
       var hooked = function () {
@@ -90,7 +97,6 @@
       hooked.__singleNavHook = true;
       SLFBoard.render = hooked;
     }
-    // 2) Backup only: interval + mutation observer.
     apply();
     setInterval(apply, 1000);
     if (window.MutationObserver) {
