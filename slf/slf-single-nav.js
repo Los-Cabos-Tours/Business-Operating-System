@@ -1,35 +1,35 @@
 // ============================================================
-// SLF Single Navigation — v13. Owner order (2026-11-18, asked
-// three times): the Client Dashboard header block —
-//   "Main CRM / Contacts / <name>" breadcrumb, the big lead
-//   name row, and the CL-ID chip — moves INTO THE SIDEBAR,
-//   above the client panel. The + New Case / Export / Delete
-//   buttons, Update Status, and the New Lead action bar are
-//   NOT part of the order and stay in the main area untouched.
+// SLF Single Navigation — v13.1. Owner order (asked repeatedly):
+// the Client Dashboard HEADER BLOCK — the breadcrumb
+// ("Main CRM / Contacts / <name>"), the big lead name row, and
+// the CL-ID chip — moves INTO THE SIDEBAR, above the client
+// panel. The + New Case / Export / Delete buttons, Update
+// Status, and the New Lead action bar are NOT part of the
+// order and stay in the main area, untouched.
 //
-// Why it failed before: the header nodes live in #view with no
-// IDs, only inline styles, so earlier versions moved only the
-// #view-title ("Client Dashboard" text). v13 finds them by
-// their unique inline style markers:
-//   - breadcrumb: <div style^="display:flex..."> whose first
-//     child is <a> (Main CRM / Contacts / <name>)
-//   - name row:   the flex row containing .bbkname (big name)
-//   - CL-ID chip: .btagid element
-// and moves each, conditionally (only when not already in the
-// sidebar — the v12 rule that killed the hang).
+// v13.1 corrections over v13 (never reached production):
+//   - breadcrumb identified by its "Main CRM" text — the New
+//     Lead bar / search row (also flex rows with links) can
+//     never be mistaken for it.
+//   - purgeSidebarCopies variable order fixed; observer option
+//     typo removed; board-closed cleanup simplified to an
+//     exact-match removal.
 //
-// Everything else is unchanged from v12:
+// Unchanged rules carried from v12/v13:
+//   - A node moves ONLY when not already in the sidebar (no
+//     re-append loop — the v12 hang fix).
+//   - Observer re-entrancy guarded.
 //   - TOP 17-module bar never hidden.
-//   - Sidebar: title block, then (client open): breadcrumb,
-//     name row, CL-ID chip, then the ONE client panel.
-//   - Observer re-entrancy guarded; no re-append loops.
-//   - Sidebar tab buttons stay removed (standing order).
+//   - Sidebar tab buttons removed (standing order).
+//   - Exactly ONE client panel.
 // ============================================================
 (function () {
   'use strict';
 
   var PANEL_ID = 'slf-side-panel';
   var applying = false;
+  var SIDEBAR_CRUMB = 'slf-side-crumb';
+  var SIDEBAR_NAMEROW = 'slf-side-namerow';
 
   function boardOpen() {
     try { return !!(window.SLFBoard && SLFBoard.state().clientId); } catch (e) { return false; }
@@ -51,30 +51,45 @@
   // Remove every sidebar panel copy except `keep` — one panel only.
   function purgeSidebarCopies(aside, keep) {
     var kids = aside.children;
-    for ( (i = kids.length - 1); i >= 0; i--) {
+    for (var i = kids.length - 1; i >= 0; i--) {
       var el = kids[i];
       if (el !== keep && (el.id === PANEL_ID || el.className === 'bleft')) {
         if (el.parentNode) el.parentNode.removeChild(el);
       }
     }
-    var i;
   }
 
-  // The header block nodes, found by structure/inline-style markers.
+  // Find the header block nodes inside #view by exact markers:
+  //   nameRow — the flex row that contains .bbkname (big name)
+  //   crumb   — the flex row whose text begins with "Main CRM"
+  // The New Lead bar and search row never contain .bbkname and
+  // never begin with "Main CRM", so they can never be grabbed.
   function findHeaderNodes() {
     var view = document.getElementById('view');
     if (!view) return null;
-    var rows = view.querySelectorAll(':scope > div');
-    var out = { crumb: null, nameRow: null, chip: null };
+    var rows = view.children;
+    var out = { crumb: null, nameRow: null };
     for (var i = 0; i < rows.length; i++) {
       var d = rows[i];
-      if (!d || !d.getAttribute || d.getAttribute('style').indexOf('display:flex') !== 0) continue;
-      if (!out.nameRow && d.querySelector(':scope > .bbkname')) out.nameRow = d;
-      else if (!out.crumb && d.querySelector(':scope > a') && !d.querySelector(':scope > .bbkname')) out.crumb = d;
+      if (d.tagName !== 'DIV') continue;
+      if (!out.nameRow && d.querySelector('.bbkname') && d.parentNode === view) {
+        out.nameRow = d;
+        continue;
+      }
+      if (!out.crumb && d.parentNode === view) {
+        var txt = (d.textContent || '').replace(/^\s+/, '');
+        if (txt.indexOf('Main CRM') === 0) out.crumb = d;
+      }
     }
-    if (out.nameRow) out.chip = out.nameRow.querySelector(':scope > .btagid');
     if (!out.nameRow || !out.crumb) return null;
     return out;
+  }
+
+  // Move `el` into the sidebar only if it is not already there.
+  function moveIntoSidebar(el, aside, markId) {
+    if (!el) return;
+    if (markId) el.id = el.id || markId;
+    if (el.parentNode !== aside) aside.appendChild(el);
   }
 
   function apply() {
@@ -90,28 +105,19 @@
       var title = document.getElementById('view-title');
 
       if (boardOpen()) {
-        // Order in the sidebar (owner): title "Client Dashboard",
-        // breadcrumb, name row, CL-ID chip, then the panel.
-        if (title && title.parentNode !== aside) {
-          aside.appendChild(title);
-        }
+        // Sidebar order (owner): "Client Dashboard" title,
+        // breadcrumb, name row (with CL-ID chip), then panel.
+        if (title && title.parentNode !== aside) aside.appendChild(title);
         var nodes = findHeaderNodes();
         if (nodes) {
-          // Move the breadcrumb (contains "Main CRM / Contacts / name").
-          if (nodes.crumb && nodes.crumb.parentNode !== aside) {
-            aside.appendChild(nodes.crumb);
-          }
-          // Move the name row (big lead name) and its CL-ID chip.
-          if (nodes.nameRow && nodes.nameRow.parentNode !== aside) {
-            aside.appendChild(nodes.nameRow);
-          }
+          moveIntoSidebar(nodes.crumb, aside, SIDEBAR_CRUMB);
+          moveIntoSidebar(nodes.nameRow, aside, SIDEBAR_NAMEROW);
         }
         var incoming = document.querySelector('#view .bleft') || document.getElementById(PANEL_ID);
         purgeSidebarCopies(aside, incoming);
-        var live = incoming;
-        if (live) {
-          live.id = PANEL_ID;
-          if (live.parentNode !== aside) aside.appendChild(live);
+        if (incoming) {
+          incoming.id = PANEL_ID;
+          if (incoming.parentNode !== aside) aside.appendChild(incoming);
         }
         aside.style.width = '330px';
         var wrap = document.querySelector('#view .bwrap');
@@ -120,28 +126,17 @@
           wrap.style.gridTemplateColumns = '1fr';
         }
       } else {
+        // Board closed: sidebar holds only the title block.
         purgeSidebarCopies(aside, null);
-        // Header nodes return to main when the board closes.
-        var home = document.getElementById('view');
-        if (title && title.parentNode === aside) {
-          aside.removeChild(title);
-          if (home) home.parentNode.insertBefore(title, home);
+        var leftovers = [document.getElementById(SIDEBAR_CRUMB), document.getElementById(SIDEBAR_NAMEROW)];
+        for (var j = leftovers.length - 1; j >= 0; j--) {
+          if (leftovers[j] && leftovers[j].parentNode) leftovers[j].parentNode.removeChild(leftovers[j]);
         }
-        // Crumb / nameRow: the board re-renders them in #view on
-        // the next SLF.render — they are regenerated, so nothing
-        // to move back manually. If they linger, remove them so
-        // the sidebar is clean when no client is open.
-        var kids = aside.children;
-        for (var i = kids.length - 1; i >= 0; i--) {
-          var el = kids[i];
-          if (el !== null && el !== title && el.id !== PANEL_ID &&
-              (el.querySelector && (el.querySelector('.bbkname') || el.querySelector(':scope > a[href]')) ) &&
-              el.className !== 'bleft') {
-            // only remove header leftovers, not title/panel
-            if (el.tagName === 'DIV' && (el.querySelector('.bbkname') || el.querySelector('.btagid') || (el.children.length > 0 && el.children[0].tagName === 'A'))) {
-              if (el.parentNode) el.parentNode.removeChild(el);
-            }
-          }
+        // Title returns to its home above #view in main.
+        if (title && title.parentNode === aside) {
+          var home = document.getElementById('view');
+          aside.removeChild(title);
+          if (home && home.parentNode) home.parentNode.insertBefore(title, home);
         }
         aside.style.width = '';
       }
@@ -154,7 +149,6 @@
     if (window.SLFBoard && typeof SLFBoard.render === 'function' && !SLFBoard.render.__singleNavHook) {
       var rawRender = SLFBoard.render;
       var hooked = function () {
-        fresh();
         rawRender.apply(SLFBoard, arguments);
         apply();
       };
@@ -164,11 +158,9 @@
     apply();
     setInterval(apply, 1000);
     if (window.MutationObserver) {
-      new MutationObserver(function () { apply(); }).observe(document.body, { childList: true, suburb: false, subtree: true });
+      new MutationObserver(function () { apply(); }).observe(document.body, { childList: true, subtree: true });
     }
   }
-
-  function fresh() { /* placeholder — kept for clarity */ }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
