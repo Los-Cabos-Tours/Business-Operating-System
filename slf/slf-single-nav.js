@@ -1,37 +1,35 @@
 // ============================================================
-// SLF Single Navigation — v12. Owner report (2026-11-18):
-//   the live page hangs: "RESULT_CODE_HUNG".
+// SLF Single Navigation — v13.1. Owner order (asked repeatedly):
+// the Client Dashboard HEADER BLOCK — the breadcrumb
+// ("Main CRM / Contacts / <name>"), the big lead name row, and
+// the CL-ID chip — moves INTO THE SIDEBAR, above the client
+// panel. The + New Case / Export / Delete buttons, Update
+// Status, and the New Lead action bar are NOT part of the
+// order and stay in the main area, untouched.
 //
-// Root cause, read from v11: every apply() pass called
-// aside.appendChild on the heading AND the panel even when they
-// were already in the sidebar. Appending a node that is not the
-// last child MOVES it to the end — so each pass moved the
-// heading behind the panel, and the MutationObserver watching the
-// body saw that move, called apply() again, which moved the
-// panel back, which fired the observer again: infinite ping-pong
-// on the UI thread. The browser hangs on load. v11 also did this
-// via the render hook AND the 1s interval simultaneously.
+// v13.1 corrections over v13 (never reached production):
+//   - breadcrumb identified by its "Main CRM" text — the New
+//     Lead bar / search row (also flex rows with links) can
+//     never be mistaken for it.
+//   - purgeSidebarCopies variable order fixed; observer option
+//     typo removed; board-closed cleanup simplified to an
+//     exact-match removal.
 //
-// v12 fixes:
-//   1. A node is moved ONLY when it is NOT already in the
-//      sidebar. Already-placed nodes are never re-appended, so
-//      no move happens, so no mutation fires, so no loop exists.
-//   2. The MutationObserver is re-entrancy guarded — mutations
-//      caused by apply() itself never re-trigger apply().
-// Everything else is unchanged from v11:
-//   - The TOP 17-module bar is NEVER hidden (owner order).
-//   - Client Dashboard heading + the ONE client panel live in
-//     the sidebar while a client is open; heading returns to
-//     main when the board closes.
-//   - Sidebar tab buttons stay removed (owner's standing order).
-//   - Exactly one panel — duplicates purged.
+// Unchanged rules carried from v12/v13:
+//   - A node moves ONLY when not already in the sidebar (no
+//     re-append loop — the v12 hang fix).
+//   - Observer re-entrancy guarded.
+//   - TOP 17-module bar never hidden.
+//   - Sidebar tab buttons removed (standing order).
+//   - Exactly ONE client panel.
 // ============================================================
 (function () {
   'use strict';
 
   var PANEL_ID = 'slf-side-panel';
-  var titleHome = null;   // where #view-title belongs when no client is open
-  var applying = false;    // re-entrancy guard for the observer
+  var applying = false;
+  var SIDEBAR_CRUMB = 'slf-side-crumb';
+  var SIDEBAR_NAMEROW = 'slf-side-namerow';
 
   function boardOpen() {
     try { return !!(window.SLFBoard && SLFBoard.state().clientId); } catch (e) { return false; }
@@ -61,34 +59,65 @@
     }
   }
 
+  // Find the header block nodes inside #view by exact markers:
+  //   nameRow — the flex row that contains .bbkname (big name)
+  //   crumb   — the flex row whose text begins with "Main CRM"
+  // The New Lead bar and search row never contain .bbkname and
+  // never begin with "Main CRM", so they can never be grabbed.
+  function findHeaderNodes() {
+    var view = document.getElementById('view');
+    if (!view) return null;
+    var rows = view.children;
+    var out = { crumb: null, nameRow: null };
+    for (var i = 0; i < rows.length; i++) {
+      var d = rows[i];
+      if (d.tagName !== 'DIV') continue;
+      if (!out.nameRow && d.querySelector('.bbkname') && d.parentNode === view) {
+        out.nameRow = d;
+        continue;
+      }
+      if (!out.crumb && d.parentNode === view) {
+        var txt = (d.textContent || '').replace(/^\s+/, '');
+        if (txt.indexOf('Main CRM') === 0) out.crumb = d;
+      }
+    }
+    if (!out.nameRow || !out.crumb) return null;
+    return out;
+  }
+
+  // Move `el` into the sidebar only if it is not already there.
+  function moveIntoSidebar(el, aside, markId) {
+    if (!el) return;
+    if (markId) el.id = el.id || markId;
+    if (el.parentNode !== aside) aside.appendChild(el);
+  }
+
   function apply() {
-    if (applying) return; // never re-enter from our own mutations
+    if (applying) return;
     applying = true;
     try {
       var aside = document.querySelector('aside');
       if (!aside) return;
       hideSidebarTabs();
 
-      // The TOP 17-module bar is never touched (owner order
-      // 2026-11-18) — no hide call exists in any state.
+      // TOP 17-module bar: never touched, never hidden.
 
       var title = document.getElementById('view-title');
 
       if (boardOpen()) {
-        // Heading → sidebar, ONLY if it is not already there.
-        if (title && title.parentNode !== aside) {
-          titleHome = { parent: title.parentNode, next: title.nextSibling };
-          aside.appendChild(title);
+        // Sidebar order (owner): "Client Dashboard" title,
+        // breadcrumb, name row (with CL-ID chip), then panel.
+        if (title && title.parentNode !== aside) aside.appendChild(title);
+        var nodes = findHeaderNodes();
+        if (nodes) {
+          moveIntoSidebar(nodes.crumb, aside, SIDEBAR_CRUMB);
+          moveIntoSidebar(nodes.nameRow, aside, SIDEBAR_NAMEROW);
         }
         var incoming = document.querySelector('#view .bleft') || document.getElementById(PANEL_ID);
         purgeSidebarCopies(aside, incoming);
-        var live = incoming;
-        if (live) {
-          live.id = PANEL_ID;
-          // Panel → sidebar, ONLY if it is not already there.
-          // Already-placed panels are never re-appended (that
-          // re-append loop is what hung the browser in v11).
-          if (live.parentNode !== aside) aside.appendChild(live);
+        if (incoming) {
+          incoming.id = PANEL_ID;
+          if (incoming.parentNode !== aside) aside.appendChild(incoming);
         }
         aside.style.width = '330px';
         var wrap = document.querySelector('#view .bwrap');
@@ -97,12 +126,17 @@
           wrap.style.gridTemplateColumns = '1fr';
         }
       } else {
+        // Board closed: sidebar holds only the title block.
         purgeSidebarCopies(aside, null);
-        // Heading back to its home, ONLY if it is in the sidebar.
-        if (title && titleHome && title.parentNode === aside) {
-          title.parentNode.removeChild(title);
-          titleHome.parent.insertBefore(title, titleHome.next);
-          titleHome = null;
+        var leftovers = [document.getElementById(SIDEBAR_CRUMB), document.getElementById(SIDEBAR_NAMEROW)];
+        for (var j = leftovers.length - 1; j >= 0; j--) {
+          if (leftovers[j] && leftovers[j].parentNode) leftovers[j].parentNode.removeChild(leftovers[j]);
+        }
+        // Title returns to its home above #view in main.
+        if (title && title.parentNode === aside) {
+          var home = document.getElementById('view');
+          aside.removeChild(title);
+          if (home && home.parentNode) home.parentNode.insertBefore(title, home);
         }
         aside.style.width = '';
       }

@@ -7,18 +7,21 @@
 // reported visibly instead of a dead page.
 // When modules change, bump VERSION (cache-busting).
 //
-// 3.38: single-nav v12 — fixes the browser hang (RESULT_CODE_HUNG)
-//       reported live on 2026-11-18. v11 re-appended already-placed
-//       nodes every pass; each move fired the MutationObserver,
-//       apply() moved them back, infinite loop. v12 moves a node
-//       only when it is NOT already in the sidebar, and guards the
-//       observer against re-entry. No behavior change otherwise:
-//       top 17-module bar never hidden; heading + one panel in
-//       the sidebar while a client is open; sidebar tabs removed.
+// 3.39: single-nav v13.1 — the Client Dashboard HEADER
+//       (breadcrumb "Main CRM / Contacts / name", the big lead
+//       name row, the CL-ID chip) moves into the SIDEBAR above
+//       the client panel, as the owner ordered. Buttons, Update
+//       Status, and New Lead stay in main, untouched.
+//
+// NOTE (2026-11-18): a v3.40 draft added an on-screen failure
+// banner the owner never asked for. REVERTED per the owner's
+// order ("do not touch anything else"). This loader is the
+// 3.39 feature set exactly: parse gate + version bump, nothing
+// else.
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.38';
+  var VERSION = '3.39';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',

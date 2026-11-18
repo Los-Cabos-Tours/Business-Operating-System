@@ -12,6 +12,16 @@
 // Lenders nested tab, contact action bar additions, breadcrumb,
 // contact search, active-module highlight.
 // The sidebar (#nav) is NEVER touched.
+//
+// v2 (2026-11-18): owner report "the tabs do not work when I
+// click on them". Cause: a clicked module workspace was a
+// one-shot DOM write; the 3-second sync heartbeat calls
+// SLF.init(), which re-renders SLF.view (Dashboard) and wiped
+// the workspace — the click looked dead. v2 keeps the active
+// module in BOSCRM.placeholderModule and re-applies it after
+// every SLF.render AND SLF.init, so the clicked tab stays on
+// screen until the user clicks a different tab. Clicking
+// Dashboard/Contacts clears it as before.
 // ============================================================
 'use strict';
 (function () {
@@ -87,6 +97,7 @@
   window.BOSCRM = {
     modules: MODULES,
     activeModule: 'dashboard',
+    placeholderModule: null, // v2: the clicked module workspace that must survive sync re-renders
 
     moduleNameById: function (id) {
       for (var i = 0; i < MODULES.length; i++) if (MODULES[i].id === id) return MODULES[i].name;
@@ -121,25 +132,37 @@
       if (!m) return;
       this.activeModule = m.id;
       if (m.view) {
+        this.placeholderModule = null; // real view — normal rendering resumes
         if (SLFBoard.state().clientId) SLFBoard.close();
         SLF.view = m.view;
         SLF.render();
       } else {
+        this.placeholderModule = m; // workspace mode — persisted across sync ticks
         this.renderPlaceholder(m);
       }
       this.syncActive();
     },
 
-    renderPlaceholder: function (m) {
-      var v = document.getElementById('view');
+    // v2: paints the active module workspace. Called on click AND
+    // after every sync re-render, so the tab the user clicked is
+    // never wiped by the 3-second heartbeat.
+    applyPlaceholder: function () {
+      var m = this.placeholderModule;
+      if (!m) return;
+      if (SLFBoard.state().clientId) return; // a client board is open — it wins
       var t = document.getElementById('view-title');
-      if (SLFBoard.state().clientId) SLFBoard.close();
+      var v = document.getElementById('view');
       if (t) t.textContent = m.name;
       if (v) {
         v.innerHTML = '<div class="card"><h3>' + m.name + ' — module workspace</h3>' +
           '<p style="color:var(--muted);font-size:13px;">This module\'s navigation destination is live. ' +
           'The ' + m.name + ' workflow is in development. No data is stored here yet — records will be added when the module ships.</p></div>';
       }
+    },
+
+    renderPlaceholder: function (m) {
+      if (SLFBoard.state().clientId) SLFBoard.close();
+      this.applyPlaceholder();
     },
 
     syncActive: function () {
@@ -205,8 +228,26 @@
         }
       }
     } catch (e) { /* search must never break the directory */ }
+    // v2: re-apply the clicked module workspace so the sync
+    // heartbeat's re-render can never wipe it back to Dashboard.
+    try { BOSCRM.applyPlaceholder(); } catch (e) {}
     try { BOSCRM.syncActive(); } catch (e) {}
   };
+
+  // v2: SLFSync calls SLF.init() after every 3-second pull. That
+  // re-render used to erase the clicked module workspace. If
+  // init does not route through SLF.render, this hook re-applies
+  // the workspace directly after it.
+  var rawSlfInit = SLF.init;
+  if (rawSlfInit && !rawSlfInit.__bosNavInitHook) {
+    SLF.init = function () {
+      var result = rawSlfInit.apply(SLF, arguments);
+      try { BOSCRM.applyPlaceholder(); } catch (e) {}
+      try { BOSCRM.syncActive(); } catch (e) {}
+      return result;
+    };
+    SLF.init.__bosNavInitHook = true;
+  }
 
   BOSCRM.filterClients = function (q) {
     q = String(q || '').toLowerCase().trim();
