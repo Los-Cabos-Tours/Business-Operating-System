@@ -1,39 +1,43 @@
 // ============================================================
-// SLF Single Navigation — v11. Owner order (2026-11-18):
-//   "Did I say sidebar tabs? No — the TOP tabs. The tabs I
-//    never asked you to take away are the top tabs."
+// SLF Single Navigation — v12. Owner report (2026-11-18):
+//   the live page hangs: "RESULT_CODE_HUNG".
 //
-// v10 misread the order and restored SIDEBAR tabs. The tabs the
-// owner meant are the TOP 17-module bar — the one this module
-// hid every time a client was opened. v11:
+// Root cause, read from v11: every apply() pass called
+// aside.appendChild on the heading AND the panel even when they
+// were already in the sidebar. Appending a node that is not the
+// last child MOVES it to the end — so each pass moved the
+// heading behind the panel, and the MutationObserver watching the
+// body saw that move, called apply() again, which moved the
+// panel back, which fired the observer again: infinite ping-pong
+// on the UI thread. The browser hangs on load. v11 also did this
+// via the render hook AND the 1s interval simultaneously.
 //
-//   1. The 17-module TOP bar is NEVER hidden. Client open or
-//      not, it stays at the top of the main area, exactly as it
-//      was before this module started touching it. No
-//      setModuleBar(false) exists anymore.
-//   2. While a client is open, the "Client Dashboard" heading
-//      (#view-title) moves into the SIDEBAR, above the client
-//      panel (owner order, kept). Returns to main when closed.
-//   3. Sidebar tabs stay REMOVED (owner's standing order from
-//      2026-11-17; the v10 restoration was a misread — reverted).
-//      Sidebar = SLF CRM / Student Loan Forgiveness, then the
-//      heading + the ONE client panel while a client is open.
-//      Injected duplicate buttons are purged, as before.
-//   4. Exactly ONE client panel (v9 purge kept).
+// v12 fixes:
+//   1. A node is moved ONLY when it is NOT already in the
+//      sidebar. Already-placed nodes are never re-appended, so
+//      no move happens, so no mutation fires, so no loop exists.
+//   2. The MutationObserver is re-entrancy guarded — mutations
+//      caused by apply() itself never re-trigger apply().
+// Everything else is unchanged from v11:
+//   - The TOP 17-module bar is NEVER hidden (owner order).
+//   - Client Dashboard heading + the ONE client panel live in
+//     the sidebar while a client is open; heading returns to
+//     main when the board closes.
+//   - Sidebar tab buttons stay removed (owner's standing order).
+//   - Exactly one panel — duplicates purged.
 // ============================================================
 (function () {
   'use strict';
 
   var PANEL_ID = 'slf-side-panel';
-  var titleHome = null; // where #view-title belongs when no client is open
+  var titleHome = null;   // where #view-title belongs when no client is open
+  var applying = false;    // re-entrancy guard for the observer
 
   function boardOpen() {
     try { return !!(window.SLFBoard && SLFBoard.state().clientId); } catch (e) { return false; }
   }
 
-  // Owner's standing order 2026-11-17: no tab buttons in the
-  // sidebar, ever. Hide the nav and remove any tab button ever
-  // injected there (including duplicate injected items).
+  // Owner's standing order: no tab buttons in the sidebar, ever.
   function hideSidebarTabs() {
     var nav = document.getElementById('nav');
     if (nav) nav.style.display = 'none';
@@ -46,8 +50,7 @@
     }
   }
 
-  // Remove every sidebar panel copy except `keep` — panels must
-  // never stack. The heading is not touched.
+  // Remove every sidebar panel copy except `keep` — one panel only.
   function purgeSidebarCopies(aside, keep) {
     var kids = aside.children;
     for (var i = kids.length - 1; i >= 0; i--) {
@@ -59,43 +62,52 @@
   }
 
   function apply() {
-    var aside = document.querySelector('aside');
-    if (!aside) return;
-    hideSidebarTabs();
+    if (applying) return; // never re-enter from our own mutations
+    applying = true;
+    try {
+      var aside = document.querySelector('aside');
+      if (!aside) return;
+      hideSidebarTabs();
 
-    // The TOP 17-module bar is never touched. It stays visible in
-    // every state — client open or not (owner order 2026-11-18).
+      // The TOP 17-module bar is never touched (owner order
+      // 2026-11-18) — no hide call exists in any state.
 
-    var title = document.getElementById('view-title');
+      var title = document.getElementById('view-title');
 
-    if (boardOpen()) {
-      // "Client Dashboard" heading lives in the SIDEBAR, above
-      // the panel (owner order, kept from v10).
-      if (title && title.parentNode !== aside) {
-        titleHome = { parent: title.parentNode, next: title.nextSibling };
-        aside.appendChild(title);
+      if (boardOpen()) {
+        // Heading → sidebar, ONLY if it is not already there.
+        if (title && title.parentNode !== aside) {
+          titleHome = { parent: title.parentNode, next: title.nextSibling };
+          aside.appendChild(title);
+        }
+        var incoming = document.querySelector('#view .bleft') || document.getElementById(PANEL_ID);
+        purgeSidebarCopies(aside, incoming);
+        var live = incoming;
+        if (live) {
+          live.id = PANEL_ID;
+          // Panel → sidebar, ONLY if it is not already there.
+          // Already-placed panels are never re-appended (that
+          // re-append loop is what hung the browser in v11).
+          if (live.parentNode !== aside) aside.appendChild(live);
+        }
+        aside.style.width = '330px';
+        var wrap = document.querySelector('#view .bwrap');
+        if (wrap) {
+          wrap.style.display = 'grid';
+          wrap.style.gridTemplateColumns = '1fr';
+        }
+      } else {
+        purgeSidebarCopies(aside, null);
+        // Heading back to its home, ONLY if it is in the sidebar.
+        if (title && titleHome && title.parentNode === aside) {
+          title.parentNode.removeChild(title);
+          titleHome.parent.insertBefore(title, titleHome.next);
+          titleHome = null;
+        }
+        aside.style.width = '';
       }
-      var incoming = document.querySelector('#view .bleft') || document.getElementById(PANEL_ID);
-      purgeSidebarCopies(aside, incoming);
-      var live = incoming;
-      if (live) {
-        live.id = PANEL_ID;
-        aside.appendChild(live); // lands directly under the heading
-      }
-      aside.style.width = '330px';
-      var wrap = document.querySelector('#view .bwrap');
-      if (wrap) {
-        wrap.style.display = 'grid';
-        wrap.style.gridTemplateColumns = '1fr';
-      }
-    } else {
-      purgeSidebarCopies(aside, null);
-      // Heading returns to its home in the main area.
-      if (title && titleHome && title.parentNode === aside) {
-        title.parentNode.removeChild(title);
-        titleHome.parent.insertBefore(title, titleHome.next);
-      }
-      aside.style.width = '';
+    } finally {
+      applying = false;
     }
   }
 
@@ -112,7 +124,7 @@
     apply();
     setInterval(apply, 1000);
     if (window.MutationObserver) {
-      new MutationObserver(apply).observe(document.body, { childList: true, subtree: true });
+      new MutationObserver(function () { apply(); }).observe(document.body, { childList: true, subtree: true });
     }
   }
 
