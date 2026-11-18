@@ -68,10 +68,9 @@ a.back:hover { color:var(--gold); }
   <!-- Owner order 2026-11-17: NO tab buttons in the sidebar, ever.
        Sidebar = title block, and while a client is open the
        Client Dashboard heading + the one client panel
-       (slf-single-nav.js v12 — moves nodes only when out of
-       place, so no observer feedback loop, no hang). The tabs
-       the owner wanted back are the TOP 17-module bar — that bar
-       is never hidden. -->
+       (slf-single-nav.js v12). The TOP 17-module bar is never
+       hidden, and clicked tabs now survive the 3-second sync
+       re-render (slf-bos-nav-final.js v2, loader 3.39). -->
 </aside>
 <main>
   <a class="back" href="../index.html">&larr; BOS Main</a>
@@ -130,10 +129,9 @@ a.back:hover { color:var(--gold); }
      no user can disable it; the flag is forced true and re-asserted). -->
 <script src="../js/boot-sync.js"></script>
 <script src="../js/settings.js"></script>
-<!-- SLF loader (v3.38): crash-proof parse gate. Single-nav v12 fixes
-     the RESULT_CODE_HUNG hang: nodes move only when out of place and
-     the observer cannot re-trigger itself. Top 17-module bar never
-     hidden; heading + one panel in the sidebar while a client is open. -->
-<script src="slf-guard.js?v=3.38"></script>
+<!-- SLF loader (v3.39): crash-proof parse gate. Clicked top-tab module
+     workspaces survive the 3-second sync re-render; top bar never
+     hidden; heading + one panel in sidebar while a client is open. -->
+<script src="slf-guard.js?v=3.39"></script>
 </body>
 </html>
