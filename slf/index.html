@@ -66,11 +66,10 @@ a.back:hover { color:var(--gold); }
   <h1>SLF CRM</h1>
   <div class="tag">Student Loan Forgiveness</div>
   <!-- Owner order 2026-11-17: NO tab buttons in the sidebar, ever.
-       The 17-module top bar is the one navigation when no client
-       is open. While a client is open, the client panel is placed
-       here under the title — immediately at render time, and
-       exactly ONE panel (slf-single-nav.js v9 removes the old
-       copy at every render; panels never stack). -->
+       Sidebar = title block, and while a client is open the
+       Client Dashboard heading + the one client panel
+       (slf-single-nav.js v11). The tabs the owner wanted back are
+       the TOP 17-module bar — that bar is never hidden. -->
 </aside>
 <main>
   <a class="back" href="../index.html">&larr; BOS Main</a>
@@ -129,10 +128,9 @@ a.back:hover { color:var(--gold); }
      no user can disable it; the flag is forced true and re-asserted). -->
 <script src="../js/boot-sync.js"></script>
 <script src="../js/settings.js"></script>
-<!-- SLF loader (v3.35): crash-proof parse gate. The client panel moves
-     into the sidebar at render time and there is EXACTLY ONE panel —
-     the previous copy is removed on every render, so panels never
-     stack. -->
-<script src="slf-guard.js?v=3.35"></script>
+<!-- SLF loader (v3.37): crash-proof parse gate. The TOP 17-module bar
+     is never hidden — client open or not. Sidebar: title + Client
+     Dashboard heading + one client panel while a client is open. -->
+<script src="slf-guard.js?v=3.37"></script>
 </body>
 </html>

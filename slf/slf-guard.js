@@ -7,15 +7,17 @@
 // reported visibly instead of a dead page.
 // When modules change, bump VERSION (cache-busting).
 //
-// 3.35: single-nav v9 — the sidebar holds EXACTLY ONE client
-//       panel. Every render removes the previous copy before
-//       moving in the fresh one (v8 dropped that removal and
-//       panels stacked: 7 re-renders = 7 panels on the live
-//       screen). One panel, every render, forever.
+// 3.37: single-nav v11 — the TOP 17-module bar is NEVER hidden
+//       (owner: "the tabs I never asked you to take away are the
+//       TOP tabs"). It stays visible with a client open. The
+//       Client Dashboard heading still moves to the sidebar
+//       above the one client panel. Sidebar tab buttons stay
+//       removed (owner's standing order; the v10 restoration
+//       was a misread and is reverted).
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.35';
+  var VERSION = '3.37';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',
