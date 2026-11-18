@@ -1,24 +1,25 @@
 // ============================================================
-// SLF Single Navigation — v10. Owner order (2026-11-18):
-//   "I need the tab to be put back like how I had them — I
-//    never asked you to move them or to take them away. Move
-//    this Client Dashboard to the sidebar where it belongs and
-//    put the tabs we had there in their place."
+// SLF Single Navigation — v11. Owner order (2026-11-18):
+//   "Did I say sidebar tabs? No — the TOP tabs. The tabs I
+//    never asked you to take away are the top tabs."
 //
-// v10 rules:
-//   1. Sidebar tabs (Dashboard, Clients, Cases & Pipeline,
-//      Activity History, Backup & Restore + injected Custom
-//      Fields / Signatures) are BACK and permanently visible.
-//      This module no longer hides them, purges them, or strips
-//      injected buttons — nothing deletes sidebar tabs, ever.
+// v10 misread the order and restored SIDEBAR tabs. The tabs the
+// owner meant are the TOP 17-module bar — the one this module
+// hid every time a client was opened. v11:
+//
+//   1. The 17-module TOP bar is NEVER hidden. Client open or
+//      not, it stays at the top of the main area, exactly as it
+//      was before this module started touching it. No
+//      setModuleBar(false) exists anymore.
 //   2. While a client is open, the "Client Dashboard" heading
-//      (#view-title) is MOVED INTO THE SIDEBAR, directly above
-//      the client panel. When the board closes, the heading
-//      returns to its original spot in the main area.
-//   3. Exactly ONE client panel in the sidebar (v9 purge kept).
-//   4. While a client is open: module bar hidden — the nested
-//      client tabs in the main area are the one tab strip
-//      there. No client open: module bar is the top navigation.
+//      (#view-title) moves into the SIDEBAR, above the client
+//      panel (owner order, kept). Returns to main when closed.
+//   3. Sidebar tabs stay REMOVED (owner's standing order from
+//      2026-11-17; the v10 restoration was a misread — reverted).
+//      Sidebar = SLF CRM / Student Loan Forgiveness, then the
+//      heading + the ONE client panel while a client is open.
+//      Injected duplicate buttons are purged, as before.
+//   4. Exactly ONE client panel (v9 purge kept).
 // ============================================================
 (function () {
   'use strict';
@@ -30,13 +31,23 @@
     try { return !!(window.SLFBoard && SLFBoard.state().clientId); } catch (e) { return false; }
   }
 
-  function setModuleBar(show) {
-    var bar = document.getElementById('bos-module-bar');
-    if (bar) bar.style.display = show ? '' : 'none';
+  // Owner's standing order 2026-11-17: no tab buttons in the
+  // sidebar, ever. Hide the nav and remove any tab button ever
+  // injected there (including duplicate injected items).
+  function hideSidebarTabs() {
+    var nav = document.getElementById('nav');
+    if (nav) nav.style.display = 'none';
+    var aside = document.querySelector('aside');
+    if (aside) {
+      var btns = aside.querySelectorAll('nav button');
+      for (var i = 0; i < btns.length; i++) {
+        if (btns[i].parentNode) btns[i].parentNode.removeChild(btns[i]);
+      }
+    }
   }
 
-  // Remove every sidebar panel copy except `keep` (v9 logic —
-  // panels must never stack). The heading is not touched.
+  // Remove every sidebar panel copy except `keep` — panels must
+  // never stack. The heading is not touched.
   function purgeSidebarCopies(aside, keep) {
     var kids = aside.children;
     for (var i = kids.length - 1; i >= 0; i--) {
@@ -50,17 +61,16 @@
   function apply() {
     var aside = document.querySelector('aside');
     if (!aside) return;
+    hideSidebarTabs();
 
-    // Owner order 2026-11-18: sidebar tabs are always visible.
-    // No hiding, no purging, no stripping — ever again.
-    var nav = document.getElementById('nav');
-    if (nav) nav.style.display = '';
+    // The TOP 17-module bar is never touched. It stays visible in
+    // every state — client open or not (owner order 2026-11-18).
 
     var title = document.getElementById('view-title');
 
     if (boardOpen()) {
-      setModuleBar(false); // one tab strip in main: the nested client tabs
-      // "Client Dashboard" heading lives in the SIDEBAR, above the panel.
+      // "Client Dashboard" heading lives in the SIDEBAR, above
+      // the panel (owner order, kept from v10).
       if (title && title.parentNode !== aside) {
         titleHome = { parent: title.parentNode, next: title.nextSibling };
         aside.appendChild(title);
@@ -79,9 +89,8 @@
         wrap.style.gridTemplateColumns = '1fr';
       }
     } else {
-      setModuleBar(true);
       purgeSidebarCopies(aside, null);
-      // Heading goes back to its home in the main area.
+      // Heading returns to its home in the main area.
       if (title && titleHome && title.parentNode === aside) {
         title.parentNode.removeChild(title);
         titleHome.parent.insertBefore(title, titleHome.next);
