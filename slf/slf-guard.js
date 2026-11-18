@@ -7,21 +7,20 @@
 // reported visibly instead of a dead page.
 // When modules change, bump VERSION (cache-busting).
 //
-// 3.39: single-nav v13.1 — the Client Dashboard HEADER
-//       (breadcrumb "Main CRM / Contacts / name", the big lead
-//       name row, the CL-ID chip) moves into the SIDEBAR above
-//       the client panel, as the owner ordered. Buttons, Update
-//       Status, and New Lead stay in main, untouched.
+// 3.41: single-nav v13.2 — the client header (breadcrumb, big
+//       lead name row, Update Status row) lives in the SIDEBAR
+//       above the ONE client panel, with the stacking bug fixed:
+//       stale copies are purged on every pass, exactly one of
+//       each row kept.
 //
 // NOTE (2026-11-18): a v3.40 draft added an on-screen failure
 // banner the owner never asked for. REVERTED per the owner's
 // order ("do not touch anything else"). This loader is the
-// 3.39 feature set exactly: parse gate + version bump, nothing
-// else.
+// parse gate + version bump only.
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.39';
+  var VERSION = '3.41';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',
