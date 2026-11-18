@@ -7,17 +7,18 @@
 // reported visibly instead of a dead page.
 // When modules change, bump VERSION (cache-busting).
 //
-// 3.37: single-nav v11 — the TOP 17-module bar is NEVER hidden
-//       (owner: "the tabs I never asked you to take away are the
-//       TOP tabs"). It stays visible with a client open. The
-//       Client Dashboard heading still moves to the sidebar
-//       above the one client panel. Sidebar tab buttons stay
-//       removed (owner's standing order; the v10 restoration
-//       was a misread and is reverted).
+// 3.38: single-nav v12 — fixes the browser hang (RESULT_CODE_HUNG)
+//       reported live on 2026-11-18. v11 re-appended already-placed
+//       nodes every pass; each move fired the MutationObserver,
+//       apply() moved them back, infinite loop. v12 moves a node
+//       only when it is NOT already in the sidebar, and guards the
+//       observer against re-entry. No behavior change otherwise:
+//       top 17-module bar never hidden; heading + one panel in
+//       the sidebar while a client is open; sidebar tabs removed.
 // ============================================================
 (function () {
   'use strict';
-  var VERSION = '3.37';
+  var VERSION = '3.38';
   var MODULES = ['slf-sync.js', 'slf-app.js', 'slf-fields.js', 'slf-fields-designer.js', 'slf-esign.js',
     'slf-board-base.js', 'slf-forth-css-a.js', 'slf-forth-css-b.js', 'slf-forth-css-install.js', 'slf-board-forms.js', 'slf-board-panel.js',
     'slf-forth-panel.js', 'slf-forth-main.js', 'slf-board-budget.js', 'slf-forth-tabs.js', 'slf-forth-nav.js', 'slf-forth-alerts.js',
