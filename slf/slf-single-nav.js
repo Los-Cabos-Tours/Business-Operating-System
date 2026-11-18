@@ -1,37 +1,35 @@
 // ============================================================
-// SLF Single Navigation — v12. Owner report (2026-11-18):
-//   the live page hangs: "RESULT_CODE_HUNG".
+// SLF Single Navigation — v13. Owner order (2026-11-18, asked
+// three times): the Client Dashboard header block —
+//   "Main CRM / Contacts / <name>" breadcrumb, the big lead
+//   name row, and the CL-ID chip — moves INTO THE SIDEBAR,
+//   above the client panel. The + New Case / Export / Delete
+//   buttons, Update Status, and the New Lead action bar are
+//   NOT part of the order and stay in the main area untouched.
 //
-// Root cause, read from v11: every apply() pass called
-// aside.appendChild on the heading AND the panel even when they
-// were already in the sidebar. Appending a node that is not the
-// last child MOVES it to the end — so each pass moved the
-// heading behind the panel, and the MutationObserver watching the
-// body saw that move, called apply() again, which moved the
-// panel back, which fired the observer again: infinite ping-pong
-// on the UI thread. The browser hangs on load. v11 also did this
-// via the render hook AND the 1s interval simultaneously.
+// Why it failed before: the header nodes live in #view with no
+// IDs, only inline styles, so earlier versions moved only the
+// #view-title ("Client Dashboard" text). v13 finds them by
+// their unique inline style markers:
+//   - breadcrumb: <div style^="display:flex..."> whose first
+//     child is <a> (Main CRM / Contacts / <name>)
+//   - name row:   the flex row containing .bbkname (big name)
+//   - CL-ID chip: .btagid element
+// and moves each, conditionally (only when not already in the
+// sidebar — the v12 rule that killed the hang).
 //
-// v12 fixes:
-//   1. A node is moved ONLY when it is NOT already in the
-//      sidebar. Already-placed nodes are never re-appended, so
-//      no move happens, so no mutation fires, so no loop exists.
-//   2. The MutationObserver is re-entrancy guarded — mutations
-//      caused by apply() itself never re-trigger apply().
-// Everything else is unchanged from v11:
-//   - The TOP 17-module bar is NEVER hidden (owner order).
-//   - Client Dashboard heading + the ONE client panel live in
-//     the sidebar while a client is open; heading returns to
-//     main when the board closes.
-//   - Sidebar tab buttons stay removed (owner's standing order).
-//   - Exactly one panel — duplicates purged.
+// Everything else is unchanged from v12:
+//   - TOP 17-module bar never hidden.
+//   - Sidebar: title block, then (client open): breadcrumb,
+//     name row, CL-ID chip, then the ONE client panel.
+//   - Observer re-entrancy guarded; no re-append loops.
+//   - Sidebar tab buttons stay removed (standing order).
 // ============================================================
 (function () {
   'use strict';
 
   var PANEL_ID = 'slf-side-panel';
-  var titleHome = null;   // where #view-title belongs when no client is open
-  var applying = false;    // re-entrancy guard for the observer
+  var applying = false;
 
   function boardOpen() {
     try { return !!(window.SLFBoard && SLFBoard.state().clientId); } catch (e) { return false; }
@@ -53,41 +51,66 @@
   // Remove every sidebar panel copy except `keep` — one panel only.
   function purgeSidebarCopies(aside, keep) {
     var kids = aside.children;
-    for (var i = kids.length - 1; i >= 0; i--) {
+    for ( (i = kids.length - 1); i >= 0; i--) {
       var el = kids[i];
       if (el !== keep && (el.id === PANEL_ID || el.className === 'bleft')) {
         if (el.parentNode) el.parentNode.removeChild(el);
       }
     }
+    var i;
+  }
+
+  // The header block nodes, found by structure/inline-style markers.
+  function findHeaderNodes() {
+    var view = document.getElementById('view');
+    if (!view) return null;
+    var rows = view.querySelectorAll(':scope > div');
+    var out = { crumb: null, nameRow: null, chip: null };
+    for (var i = 0; i < rows.length; i++) {
+      var d = rows[i];
+      if (!d || !d.getAttribute || d.getAttribute('style').indexOf('display:flex') !== 0) continue;
+      if (!out.nameRow && d.querySelector(':scope > .bbkname')) out.nameRow = d;
+      else if (!out.crumb && d.querySelector(':scope > a') && !d.querySelector(':scope > .bbkname')) out.crumb = d;
+    }
+    if (out.nameRow) out.chip = out.nameRow.querySelector(':scope > .btagid');
+    if (!out.nameRow || !out.crumb) return null;
+    return out;
   }
 
   function apply() {
-    if (applying) return; // never re-enter from our own mutations
+    if (applying) return;
     applying = true;
     try {
       var aside = document.querySelector('aside');
       if (!aside) return;
       hideSidebarTabs();
 
-      // The TOP 17-module bar is never touched (owner order
-      // 2026-11-18) — no hide call exists in any state.
+      // TOP 17-module bar: never touched, never hidden.
 
       var title = document.getElementById('view-title');
 
       if (boardOpen()) {
-        // Heading → sidebar, ONLY if it is not already there.
+        // Order in the sidebar (owner): title "Client Dashboard",
+        // breadcrumb, name row, CL-ID chip, then the panel.
         if (title && title.parentNode !== aside) {
-          titleHome = { parent: title.parentNode, next: title.nextSibling };
           aside.appendChild(title);
+        }
+        var nodes = findHeaderNodes();
+        if (nodes) {
+          // Move the breadcrumb (contains "Main CRM / Contacts / name").
+          if (nodes.crumb && nodes.crumb.parentNode !== aside) {
+            aside.appendChild(nodes.crumb);
+          }
+          // Move the name row (big lead name) and its CL-ID chip.
+          if (nodes.nameRow && nodes.nameRow.parentNode !== aside) {
+            aside.appendChild(nodes.nameRow);
+          }
         }
         var incoming = document.querySelector('#view .bleft') || document.getElementById(PANEL_ID);
         purgeSidebarCopies(aside, incoming);
         var live = incoming;
         if (live) {
           live.id = PANEL_ID;
-          // Panel → sidebar, ONLY if it is not already there.
-          // Already-placed panels are never re-appended (that
-          // re-append loop is what hung the browser in v11).
           if (live.parentNode !== aside) aside.appendChild(live);
         }
         aside.style.width = '330px';
@@ -98,11 +121,27 @@
         }
       } else {
         purgeSidebarCopies(aside, null);
-        // Heading back to its home, ONLY if it is in the sidebar.
-        if (title && titleHome && title.parentNode === aside) {
-          title.parentNode.removeChild(title);
-          titleHome.parent.insertBefore(title, titleHome.next);
-          titleHome = null;
+        // Header nodes return to main when the board closes.
+        var home = document.getElementById('view');
+        if (title && title.parentNode === aside) {
+          aside.removeChild(title);
+          if (home) home.parentNode.insertBefore(title, home);
+        }
+        // Crumb / nameRow: the board re-renders them in #view on
+        // the next SLF.render — they are regenerated, so nothing
+        // to move back manually. If they linger, remove them so
+        // the sidebar is clean when no client is open.
+        var kids = aside.children;
+        for (var i = kids.length - 1; i >= 0; i--) {
+          var el = kids[i];
+          if (el !== null && el !== title && el.id !== PANEL_ID &&
+              (el.querySelector && (el.querySelector('.bbkname') || el.querySelector(':scope > a[href]')) ) &&
+              el.className !== 'bleft') {
+            // only remove header leftovers, not title/panel
+            if (el.tagName === 'DIV' && (el.querySelector('.bbkname') || el.querySelector('.btagid') || (el.children.length > 0 && el.children[0].tagName === 'A'))) {
+              if (el.parentNode) el.parentNode.removeChild(el);
+            }
+          }
         }
         aside.style.width = '';
       }
@@ -115,6 +154,7 @@
     if (window.SLFBoard && typeof SLFBoard.render === 'function' && !SLFBoard.render.__singleNavHook) {
       var rawRender = SLFBoard.render;
       var hooked = function () {
+        fresh();
         rawRender.apply(SLFBoard, arguments);
         apply();
       };
@@ -124,9 +164,11 @@
     apply();
     setInterval(apply, 1000);
     if (window.MutationObserver) {
-      new MutationObserver(function () { apply(); }).observe(document.body, { childList: true, subtree: true });
+      new MutationObserver(function () { apply(); }).observe(document.body, { childList: true, suburb: false, subtree: true });
     }
   }
+
+  function fresh() { /* placeholder — kept for clarity */ }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
