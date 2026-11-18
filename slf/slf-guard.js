@@ -7,12 +7,12 @@
 // reported visibly instead of a dead page.
 // When modules change, bump VERSION (cache-busting).
 //
-// 3.39: bos-nav-final v2 — clicked top-tab module workspaces now
-//       survive the 3-second sync re-render (owner report:
-//       "the tabs do not work when I click on them"). The
-//       workspace was a one-shot DOM write that SLF.init()
-//       wiped back to Dashboard every sync tick. The active
-//       module is re-applied after every render/init.
+// 3.39: single-nav v13.1 — the Client Dashboard HEADER BLOCK
+//       (breadcrumb "Main CRM / Contacts / name", the big lead
+//       name row, the CL-ID chip) moves into the SIDEBAR above
+//       the client panel, as the owner has repeatedly ordered.
+//       Buttons, Update Status, and New Lead stay in main,
+//       untouched. Conditional moves only; observer guarded.
 // ============================================================
 (function () {
   'use strict';
